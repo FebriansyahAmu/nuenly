@@ -5,6 +5,7 @@
 
 #![cfg(windows)]
 
+pub mod clipboard;
 mod hardening;
 mod process;
 pub mod uia;

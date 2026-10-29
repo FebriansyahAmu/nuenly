@@ -30,6 +30,7 @@
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@lucide/svelte": "^1.62.0",
-    "@tauri-apps/api": "^2.12.4"
+    "@tauri-apps/api": "^2.12.4",
+    "svelte-sonner": "^1.2.2"
   }
 }

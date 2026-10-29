@@ -4,6 +4,8 @@
 #![forbid(unsafe_code)]
 
 mod ask;
+mod clipboard;
+mod toast;
 mod tray;
 
 use anyhow::Context as _;
@@ -14,6 +16,10 @@ fn main() -> anyhow::Result<()> {
     nuenly_platform_windows::harden_dll_search().context("gagal membatasi pencarian DLL")?;
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            clipboard::clipboard_write_text,
+            toast::toast_layout,
+        ])
         .setup(|app| {
             tray::create(app.handle())?;
             Ok(())

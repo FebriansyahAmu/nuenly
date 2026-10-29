@@ -1,7 +1,7 @@
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check';
   import X from '@lucide/svelte/icons/x';
-  import { isTauri } from '@tauri-apps/api/core';
+  import { invoke, isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { onMount, tick } from 'svelte';
@@ -32,7 +32,12 @@
   }
 
   async function copy() {
-    await navigator.clipboard.writeText(session.answer);
+    // Lewat Rust agar jawaban tidak ikut ke riwayat clipboard dan clipboard cloud.
+    if (isTauri()) {
+      await invoke('clipboard_write_text', { text: session.answer });
+    } else {
+      await navigator.clipboard.writeText(session.answer);
+    }
     copied = true;
     setTimeout(() => (copied = false), 1500);
   }

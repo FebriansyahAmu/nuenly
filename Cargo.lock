@@ -1847,6 +1847,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "nuenly-platform-windows",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
 ]
@@ -1866,6 +1868,7 @@ dependencies = [
  "nuenly-core",
  "uiautomation",
  "windows",
+ "zeroize",
 ]
 
 [[package]]

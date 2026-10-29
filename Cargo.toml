@@ -14,6 +14,8 @@ nuenly-core = { path = "crates/nuenly-core" }
 nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
 
 anyhow = "1.0.104"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 tauri = "2.12.5"
 tauri-build = "2.7.4"
 thiserror = "2.0.21"
