@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
+mod ask;
 mod tray;
 
 use anyhow::Context as _;
@@ -17,12 +18,17 @@ fn main() -> anyhow::Result<()> {
             tray::create(app.handle())?;
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|window, event| match event {
             // Nuenly hidup di tray: menutup jendela hanya menyembunyikannya.
-            if let WindowEvent::CloseRequested { api, .. } = event {
+            WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // Tanya Nuenly tertutup sendiri saat pengguna pindah ke jendela lain.
+            WindowEvent::Focused(false) if window.label() == ask::LABEL => {
+                let _ = window.hide();
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .context("Nuenly berhenti karena error")

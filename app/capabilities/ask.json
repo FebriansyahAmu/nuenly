@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "ask",
-  "description": "Tanya Nuenly: hanya menyembunyikan jendelanya sendiri (Esc).",
+  "description": "Tanya Nuenly: menerima event ask:open dan menyembunyikan jendelanya sendiri (Esc).",
   "windows": ["ask"],
-  "permissions": ["core:window:allow-hide"]
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "core:window:allow-hide"]
 }
