@@ -1,0 +1,21 @@
+[package]
+name = "nuenly"
+description = "Asisten AI desktop yang membaca konteks aplikasi aktif, dengan model lokal."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tauri = { workspace = true, features = ["tray-icon"] }
+
+[target.'cfg(windows)'.dependencies]
+nuenly-platform-windows.workspace = true
+
+[lints]
+workspace = true

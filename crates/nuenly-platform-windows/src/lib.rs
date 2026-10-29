@@ -5,7 +5,9 @@
 
 #![cfg(windows)]
 
+mod hardening;
 mod process;
 pub mod uia;
 
+pub use hardening::harden_dll_search;
 pub use process::process_name;

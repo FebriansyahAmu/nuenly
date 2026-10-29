@@ -1,0 +1,3 @@
+# Frontend punya HMR sendiri lewat Vite; perubahannya tidak perlu memicu rebuild Rust.
+ui/
+gen/

@@ -69,6 +69,19 @@ Lupa sign-off? Perbaiki commit terakhir dengan `git commit --amend -s --no-edit`
 
 Kecuali Anda menyatakan lain secara tegas, setiap kontribusi yang sengaja Anda ajukan untuk dimasukkan ke proyek ini, sebagaimana didefinisikan dalam lisensi Apache-2.0, dilisensikan ganda sebagai MIT OR Apache-2.0 tanpa syarat atau ketentuan tambahan.
 
+## Menyiapkan lingkungan
+
+Butuh Rust (versinya dikunci di `rust-toolchain.toml`), Node 24, dan Windows 10/11 dengan WebView2.
+
+```
+cargo install --locked cargo-deny cargo-vet tauri-cli
+corepack enable pnpm
+pnpm -C app/ui install
+cargo tauri dev
+```
+
+Bila `corepack enable` gagal karena butuh hak admin, pasang shim-nya ke folder global npm milik Anda: `corepack enable pnpm --install-directory "%APPDATA%\npm"`.
+
 ## Perintah sebelum membuka PR
 
 ```
@@ -80,9 +93,9 @@ cargo vet
 pnpm -C app/ui check
 ```
 
-Pasang alatnya sekali dengan `cargo install --locked cargo-deny cargo-vet`. CI juga menjalankan `cargo audit`.
+CI juga menjalankan `cargo audit` dan `pnpm build`.
 
-Jalankan aplikasi dengan `cargo tauri dev`. Kode khusus Windows diuji di CI `windows-latest`; test di `nuenly-core` harus jalan di OS apa pun lewat `FakeContextSource`.
+Kode khusus Windows diuji di CI `windows-latest`; test di `nuenly-core` harus jalan di OS apa pun lewat `FakeContextSource`.
 
 ## Aturan keras
 
