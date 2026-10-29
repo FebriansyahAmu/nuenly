@@ -1,0 +1,46 @@
+# Konfigurasi cargo-deny. Di CI: `cargo deny --locked check`.
+
+[graph]
+# CI rantai pasok berjalan di Linux, jadi target rilis disebut eksplisit agar
+# dependensi khusus Windows tetap dianalisis.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Lisensi permisif yang cocok dengan MIT OR Apache-2.0. Menambah lisensi lain
+# (termasuk copyleft per berkas seperti MPL-2.0) perlu alasan di PR.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Dependensi path antar-crate workspace (publish = false) tidak dianggap wildcard.
+allow-wildcard-paths = true
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

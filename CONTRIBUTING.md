@@ -76,8 +76,11 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check
+cargo vet
 pnpm -C app/ui check
 ```
+
+Pasang alatnya sekali dengan `cargo install --locked cargo-deny cargo-vet`. CI juga menjalankan `cargo audit`.
 
 Jalankan aplikasi dengan `cargo tauri dev`. Kode khusus Windows diuji di CI `windows-latest`; test di `nuenly-core` harus jalan di OS apa pun lewat `FakeContextSource`.
 
@@ -99,7 +102,7 @@ PR yang melanggar aturan ini tidak akan digabung.
 
 ## Dependensi baru
 
-- Harus lolos `cargo deny check`.
+- Harus lolos `cargo deny check` dan `cargo vet`. Crate yang belum punya audit dari sumber yang kita impor dicatat dulu di `supply-chain/config.toml` dengan `cargo vet` (audit sendiri atau exemption), dan alasannya ditulis di PR.
 - Utamakan crate yang sudah disebut di PRD atau ADR.
 - Tulis alasannya di deskripsi PR: kenapa perlu, alternatif yang ditimbang, dan dampaknya ke ukuran binary.
 - Fitur berat (OCR, Java bridge, LLM embedded, RAG) masuk di belakang cargo feature, bukan build default.
