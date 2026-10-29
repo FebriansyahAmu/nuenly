@@ -1,0 +1,11 @@
+[package]
+name = "nuenly-core"
+description = "Tipe inti Nuenly yang bebas OS: ContextSnapshot, trait platform, ActivePolicy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
