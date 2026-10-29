@@ -1,0 +1,23 @@
+# Rust
+/target/
+
+# Node / frontend
+node_modules/
+
+# Dokumen internal: tidak ikut ke repo
+/docs/
+/PRD.md
+/CLAUDE.md
+
+# Rahasia lokal: jangan pernah di-commit
+.env
+.env.*
+
+# Editor dan OS
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code (setelan lokal per mesin)
+.claude/settings.local.json
