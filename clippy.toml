@@ -1,2 +1,42 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+
+# Nuenly hanya membaca aplikasi lain. Satu-satunya aksi tulis yang boleh ada adalah Ganti teks
+# (F-23) atas klik pengguna, dan titik itu wajib memakai #[allow(clippy::disallowed_methods)]
+# beserta alasannya.
+disallowed-methods = [
+    { path = "uiautomation::core::UIElement::send_keys", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::hold_send_keys", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::send_text", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::click", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::hold_click", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::double_click", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::right_click", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::drag_to", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::core::UIElement::set_focus", reason = "Nuenly tidak memindahkan fokus aplikasi lain" },
+    { path = "uiautomation::core::UIElement::try_focus", reason = "Nuenly tidak memindahkan fokus aplikasi lain" },
+    { path = "uiautomation::core::UIElement::show_context_menu", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIValuePattern::set_value", reason = "hanya untuk Ganti teks (F-23)" },
+    { path = "uiautomation::patterns::UILegacyIAccessiblePattern::set_value", reason = "hanya untuk Ganti teks (F-23)" },
+    { path = "uiautomation::patterns::UILegacyIAccessiblePattern::select", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UILegacyIAccessiblePattern::do_default_action", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIRangeValuePattern::set_value", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIInvokePattern::invoke", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIExpandCollapsePattern::expand", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIExpandCollapsePattern::collapse", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIScrollPattern::scroll", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UISelectionItemPattern::select", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UISelectionItemPattern::add_to_selection", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UITextRange::select", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UITextRange::add_to_selection", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UITogglePattern::toggle", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UITransformPattern::move_to", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UITransformPattern::resize", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UITransformPattern::rotate", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIWindowPattern::close", reason = "Nuenly hanya membaca" },
+    { path = "uiautomation::patterns::UIWindowPattern::set_window_visual_state", reason = "Nuenly hanya membaca" },
+]
+disallowed-types = [
+    { path = "uiautomation::inputs::Keyboard", reason = "Nuenly tidak mengirim input keyboard" },
+    { path = "uiautomation::inputs::Mouse", reason = "Nuenly tidak mengirim input mouse" },
+]

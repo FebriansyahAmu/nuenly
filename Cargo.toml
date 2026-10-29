@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "tools/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,7 +10,15 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+nuenly-core = { path = "crates/nuenly-core" }
+nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
+
+anyhow = "1.0.104"
 thiserror = "2.0.21"
+# `input` wajib karena uiautomation 0.25.1 tidak terkompilasi tanpanya. Aksi tulisnya
+# (klik, kirim tombol, set value) dikunci lewat disallowed-methods di clippy.toml.
+uiautomation = { version = "0.25.1", default-features = false, features = ["input", "pattern"] }
+windows = "0.62.2"
 zeroize = "1.9.1"
 
 # `unsafe_code` sengaja tidak diset di sini: crate platform butuh `unsafe`, dan cargo

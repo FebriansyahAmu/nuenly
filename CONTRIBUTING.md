@@ -93,7 +93,7 @@ PR yang melanggar aturan ini tidak akan digabung.
 - **Teks pengguna tidak masuk log.** Juga tidak masuk snapshot test, pesan error, atau telemetri. Field `value`, `text`, dan `content` ditolak oleh layer `tracing`.
 - **`unsafe` hanya di `nuenly-platform-windows`.** Setiap blok diberi komentar `// SAFETY:`. Crate lain memakai `#![forbid(unsafe_code)]`.
 - **Tanpa `unwrap()` atau `expect()` di luar test.** Library memakai `thiserror`, batas aplikasi memakai `anyhow`.
-- **Hanya membaca.** Satu-satunya aksi tulis ke aplikasi lain adalah Ganti teks, dan hanya setelah pengguna mengklik.
+- **Hanya membaca.** Satu-satunya aksi tulis ke aplikasi lain adalah Ganti teks, dan hanya setelah pengguna mengklik. Aksi tulis `uiautomation` (klik, kirim tombol, set value) dikunci lewat `disallowed-methods` di `clippy.toml`; titik Ganti teks memakai `#[allow(clippy::disallowed_methods)]` beserta alasannya.
 - **Konten luar adalah data.** Konten layar dan output tool MCP dibungkus tag ber-ID acak dan tidak pernah digabung ke instruksi sistem.
 - **Output saran divalidasi.** Output LLM untuk saran proaktif wajib lolos JSON schema; gagal → ulang sekali → buang.
 - **Ollama hanya di `127.0.0.1`.** Jangan menambah server HTTP di localhost; IPC hanya lewat command Tauri.

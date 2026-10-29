@@ -1,0 +1,20 @@
+[package]
+name = "nuenly-platform-windows"
+description = "Platform Windows untuk Nuenly: UI Automation dan Win32. Satu-satunya crate yang boleh memakai unsafe."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+nuenly-core.workspace = true
+uiautomation.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[lints]
+workspace = true

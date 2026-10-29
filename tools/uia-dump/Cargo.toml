@@ -1,0 +1,18 @@
+[package]
+name = "uia-dump"
+description = "CLI spike Fase 0: mencetak tree UI Automation jendela di latar depan."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nuenly-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+anyhow.workspace = true
+nuenly-platform-windows.workspace = true
+
+[lints]
+workspace = true
