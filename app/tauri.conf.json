@@ -1,0 +1,93 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nuenly",
+  "mainBinaryName": "nuenly",
+  "identifier": "app.nuenly",
+  "build": {
+    "beforeDevCommand": { "script": "pnpm dev", "cwd": "ui" },
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": { "script": "pnpm build", "cwd": "ui" },
+    "frontendDist": "ui/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "ask",
+        "url": "ask.html",
+        "title": "Tanya Nuenly",
+        "width": 640,
+        "height": 420,
+        "center": true,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
+      },
+      {
+        "label": "toast",
+        "url": "toast.html",
+        "title": "Saran Nuenly",
+        "width": 400,
+        "height": 220,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "visible": false
+      },
+      {
+        "label": "tray",
+        "url": "tray.html",
+        "title": "Nuenly",
+        "width": 320,
+        "height": 400,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
+      },
+      {
+        "label": "onboarding",
+        "url": "onboarding.html",
+        "title": "Selamat datang di Nuenly",
+        "width": 900,
+        "height": 620,
+        "center": true,
+        "resizable": false,
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "url": "settings.html",
+        "title": "Pengaturan Nuenly",
+        "width": 960,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 520,
+        "center": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' data:",
+        "style-src": "'self' 'unsafe-inline'",
+        "font-src": "'self'"
+      },
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+  }
+}

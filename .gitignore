@@ -3,6 +3,10 @@
 
 # Node / frontend
 node_modules/
+/app/ui/dist/
+
+# Tauri: schema hasil generate tauri-build
+/app/gen/
 
 # Dokumen internal: tidak ikut ke repo
 /docs/

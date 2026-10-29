@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray",
+  "description": "Belum ada akses IPC; izin ditambahkan saat jendela ini membutuhkannya.",
+  "windows": ["tray"],
+  "permissions": []
+}

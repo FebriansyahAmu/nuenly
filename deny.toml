@@ -27,7 +27,16 @@ allow = [
     "Unicode-3.0",
 ]
 confidence-threshold = 0.93
-exceptions = []
+# MPL-2.0 adalah copyleft per berkas: memakai crate tanpa mengubahnya tidak membebani
+# lisensi Nuenly. Diizinkan per crate (bukan global) agar crate MPL baru tetap ditinjau.
+# Semuanya dependensi turunan Tauri (parser CSS untuk injeksi HTML dan direktori sistem).
+exceptions = [
+    { crate = "cssparser", allow = ["MPL-2.0"] },
+    { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+    { crate = "dtoa-short", allow = ["MPL-2.0"] },
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    { crate = "selectors", allow = ["MPL-2.0"] },
+]
 
 [bans]
 multiple-versions = "warn"
