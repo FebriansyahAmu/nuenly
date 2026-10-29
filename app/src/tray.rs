@@ -4,6 +4,8 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
+use crate::ask;
+
 const ASK: &str = "ask";
 const SETTINGS: &str = "settings";
 const QUIT: &str = "quit";
@@ -24,7 +26,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             QUIT => app.exit(0),
-            label @ (ASK | SETTINGS) => show(app, label),
+            ASK => {
+                let _ = ask::open(app);
+            }
+            SETTINGS => show(app, SETTINGS),
             _ => {}
         });
     if let Some(icon) = app.default_window_icon() {
