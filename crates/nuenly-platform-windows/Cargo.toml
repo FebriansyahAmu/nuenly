@@ -12,10 +12,13 @@ nuenly-core.workspace = true
 uiautomation.workspace = true
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
+zeroize.workspace = true
 
 [lints]
 workspace = true
