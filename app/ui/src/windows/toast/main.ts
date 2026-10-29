@@ -3,6 +3,8 @@ import '../../app.css';
 import { isTauri } from '@tauri-apps/api/core';
 import { type Component, mount } from 'svelte';
 
+import { watchStatus } from '$lib/status';
+
 import App from './App.svelte';
 
 const target = document.getElementById('app');
@@ -20,4 +22,6 @@ if (target && import.meta.env.DEV && !isTauri()) {
   }
 } else if (target) {
   mount(App, { target });
+  // Titik logo di toast mengikuti warna aksen mode aktif.
+  void watchStatus();
 }

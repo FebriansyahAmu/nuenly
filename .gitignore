@@ -20,6 +20,8 @@ node_modules/
 
 # Editor dan OS
 .idea/
+# Cache npm lokal yang bisa muncul bila konfigurasi cache npm memakai path relatif
+/.codenpm/
 *.swp
 .DS_Store
 Thumbs.db

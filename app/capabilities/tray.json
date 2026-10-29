@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "tray",
-  "description": "Belum ada akses IPC; izin ditambahkan saat jendela ini membutuhkannya.",
+  "description": "Popup tray: membaca dan mengubah status (mode, jeda), membuka Pengaturan, keluar.",
   "windows": ["tray"],
-  "permissions": []
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-hide",
+    "allow-status-get",
+    "allow-status-set-mode",
+    "allow-status-pause",
+    "allow-status-resume",
+    "allow-open-settings",
+    "allow-app-quit"
+  ]
 }

@@ -3,6 +3,8 @@ import '../../app.css';
 import { isTauri } from '@tauri-apps/api/core';
 import { mount } from 'svelte';
 
+import { watchStatus } from '$lib/status';
+
 import App from './App.svelte';
 import { unavailableBackend } from './backend';
 import { AskSession } from './session.svelte';
@@ -17,4 +19,8 @@ const session =
 const target = document.getElementById('app');
 if (target) {
   mount(App, { target, props: { session } });
+}
+if (isTauri()) {
+  // Titik logo mengikuti warna aksen mode aktif.
+  void watchStatus();
 }
