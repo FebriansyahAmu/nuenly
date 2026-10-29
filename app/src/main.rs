@@ -5,20 +5,29 @@
 
 mod ask;
 mod clipboard;
+mod status;
 mod toast;
 mod tray;
 
 use anyhow::Context as _;
-use tauri::WindowEvent;
+use tauri::{Manager, WindowEvent};
 
 fn main() -> anyhow::Result<()> {
     #[cfg(windows)]
     nuenly_platform_windows::harden_dll_search().context("gagal membatasi pencarian DLL")?;
 
     tauri::Builder::default()
+        .manage(status::AppStatus::default())
+        .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![
             clipboard::clipboard_write_text,
+            status::status_get,
+            status::status_pause,
+            status::status_resume,
+            status::status_set_mode,
             toast::toast_layout,
+            tray::app_quit,
+            tray::open_settings,
         ])
         .setup(|app| {
             tray::create(app.handle())?;
@@ -33,6 +42,10 @@ fn main() -> anyhow::Result<()> {
             // Tanya Nuenly tertutup sendiri saat pengguna pindah ke jendela lain.
             WindowEvent::Focused(false) if window.label() == ask::LABEL => {
                 let _ = window.hide();
+            }
+            // Popup tray juga menutup sendiri, seperti flyout Windows.
+            WindowEvent::Focused(false) if window.label() == tray::POPUP => {
+                tray::popup_blurred(window.app_handle());
             }
             _ => {}
         })

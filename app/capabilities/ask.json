@@ -7,6 +7,7 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-hide",
-    "allow-clipboard-write-text"
+    "allow-clipboard-write-text",
+    "allow-status-get"
   ]
 }
