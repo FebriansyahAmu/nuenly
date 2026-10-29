@@ -7,5 +7,13 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# FakeContextSource untuk test di crate lain.
+fake = []
+
+[dependencies]
+thiserror.workspace = true
+zeroize.workspace = true
+
 [lints]
 workspace = true

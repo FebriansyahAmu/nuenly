@@ -9,6 +9,10 @@ rust-version = "1.99"
 license = "MIT OR Apache-2.0"
 publish = false
 
+[workspace.dependencies]
+thiserror = "2.0.21"
+zeroize = "1.9.1"
+
 # `unsafe_code` sengaja tidak diset di sini: crate platform butuh `unsafe`, dan cargo
 # tidak mengizinkan satu crate menimpa sebagian lint workspace. Crate selain
 # nuenly-platform-windows memasang `#![forbid(unsafe_code)]` di lib.rs.
