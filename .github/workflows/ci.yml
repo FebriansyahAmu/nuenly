@@ -35,8 +35,8 @@ jobs:
       - name: test
         run: cargo test --workspace --all-features --locked
 
-  # Core harus lolos test di OS apa pun lewat FakeContextSource. Saat crate khusus
-  # Windows masuk workspace, batasi job ini ke crate yang bebas OS.
+  # Core harus lolos test di OS apa pun lewat FakeContextSource. Crate khusus Windows
+  # memakai #![cfg(windows)], jadi di sini kosong dan seluruh workspace tetap dites.
   portable:
     name: Test portabel · ubuntu-latest
     runs-on: ubuntu-latest
