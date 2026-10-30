@@ -2,10 +2,13 @@
 
 use std::fmt::Write as _;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
-use nuenly_core::AppFilter;
+use nuenly_core::{
+    ActivePolicy, AppFilter, Browser, ContextSource, ModeId, SensitivePage, classify,
+};
+use nuenly_platform_windows::UiaContextSource;
 use nuenly_platform_windows::uia::{Uia, UiaNode, UiaWindow, WalkLimits};
 
 use crate::args::Args;
@@ -23,6 +26,9 @@ pub fn run(args: &Args) -> Result<()> {
         args.delay.as_secs()
     );
     thread::sleep(args.delay);
+    if args.browser {
+        return print_browser_page(args);
+    }
 
     let uia = Uia::new().context("gagal menyiapkan UI Automation")?;
     let Some(window) = uia
@@ -104,6 +110,70 @@ fn print_focused(uia: &Uia, window: &UiaWindow, args: &Args) -> Result<()> {
     println!(
         "Waktu baca elemen fokus: {} (target PRD ≤ 50 ms)",
         millis(report.elapsed)
+    );
+    Ok(())
+}
+
+/// Pemeriksaan halaman browser yang sama dengan `nuenly_core::capture`, dua kali: yang kedua
+/// memakai address bar yang sudah ditemukan.
+fn print_browser_page(args: &Args) -> Result<()> {
+    let source = UiaContextSource::spawn(Duration::from_secs(5))
+        .context("gagal menyiapkan UI Automation")?;
+    let Some(window) = source
+        .foreground_window()
+        .context("gagal membaca jendela di latar depan")?
+    else {
+        bail!("tidak ada jendela di latar depan");
+    };
+    let Some(browser) = Browser::from_process(&window.app.process) else {
+        bail!("{} bukan browser yang dikenali Nuenly", window.app.process);
+    };
+    let policy = ActivePolicy::new(ModeId::new("all").context("ID mode")?);
+    let Some(permit) = policy.permit(&window) else {
+        bail!(
+            "{} termasuk aplikasi yang tidak pernah dibaca Nuenly",
+            window.app.process
+        );
+    };
+    println!("Aplikasi: {} ({browser:?})", window.app.process);
+
+    let started = Instant::now();
+    let page = source
+        .browser_page(&permit, browser)
+        .context("gagal memeriksa halaman")?;
+    let first = started.elapsed();
+    let started = Instant::now();
+    source
+        .browser_page(&permit, browser)
+        .context("gagal memeriksa halaman")?;
+    let again = started.elapsed();
+
+    for (index, title) in page.titles.iter().enumerate() {
+        println!(
+            "Judul {}: {}",
+            index + 1,
+            render::text(title, args.show_names)
+        );
+    }
+    println!(
+        "Address bar: {}",
+        page.address.as_ref().map_or_else(
+            || "tidak ditemukan (yang diperiksa hanya judul)".to_owned(),
+            |address| render::text(address, args.show_values)
+        )
+    );
+    println!(
+        "Hasil: {}",
+        match classify(&page) {
+            Some(SensitivePage::PrivateWindow) => "jendela privat, tidak dibaca",
+            Some(SensitivePage::Banking) => "situs perbankan, tidak dibaca",
+            None => "boleh dibaca",
+        }
+    );
+    println!(
+        "Waktu periksa: {} pertama, {} berikutnya",
+        millis(first),
+        millis(again)
     );
     Ok(())
 }

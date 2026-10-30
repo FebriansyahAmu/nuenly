@@ -1,6 +1,7 @@
 //! Trait platform untuk membaca konteks, dan satu-satunya jalur baca yang dipakai aplikasi.
 
 use crate::app::{AppIdentity, ForegroundWindow};
+use crate::browser::{self, Browser, BrowserPage, SensitivePage};
 use crate::error::ContextError;
 use crate::policy::{ActivePolicy, ReadPermit};
 use crate::snapshot::{CaptureKind, ContextSnapshot};
@@ -17,6 +18,20 @@ pub trait ContextSource: Send + Sync {
     ///
     /// [`ContextError`] bila platform gagal menjawab.
     fn foreground_window(&self) -> Result<Option<ForegroundWindow>, ContextError>;
+
+    /// Judul jendela dan isi address bar browser yang diizinkan `permit`, hanya untuk
+    /// memeriksa jendela privat dan situs perbankan sebelum isinya dibaca.
+    ///
+    /// # Errors
+    ///
+    /// [`ContextError::ForegroundChanged`] bila jendela itu sudah tidak di latar depan, atau
+    /// [`ContextError`] lain dari platform, termasuk bila address bar ada tetapi tidak bisa
+    /// dibaca.
+    fn browser_page(
+        &self,
+        permit: &ReadPermit<'_>,
+        browser: Browser,
+    ) -> Result<BrowserPage, ContextError>;
 
     /// Membaca konteks dari jendela yang diizinkan `permit`. `None` bila tidak ada yang bisa
     /// dibaca, misalnya tidak ada teks terpilih.
@@ -40,6 +55,8 @@ pub enum CaptureOutcome {
     NoWindow,
     /// Filter aplikasi menolak aplikasi ini; isi jendelanya tidak dibaca.
     NotAllowed(AppIdentity),
+    /// Jendela privat atau situs perbankan di browser; isi halamannya tidak dibaca.
+    Sensitive(SensitivePage),
     /// Field kata sandi; hasil bacanya dibuang.
     ProtectedField,
     /// Tidak ada teks yang bisa dibaca.
@@ -48,7 +65,8 @@ pub enum CaptureOutcome {
 
 /// Membaca konteks dari jendela di latar depan setelah memeriksa kebijakan.
 ///
-/// Urutannya: ambil identitas jendela, periksa filter aplikasi, baru baca isinya.
+/// Urutannya: ambil identitas jendela, periksa filter aplikasi, periksa halaman bila jendelanya
+/// browser (jendela privat dan situs perbankan tidak pernah dibaca), baru baca isinya.
 /// Hasil dari field kata sandi dibuang, dan hasil dari aplikasi lain (jendela berganti
 /// saat dibaca) ditolak.
 ///
@@ -70,6 +88,12 @@ where
     let Some(permit) = policy.permit(&window) else {
         return Ok(CaptureOutcome::NotAllowed(window.app));
     };
+    if let Some(browser) = Browser::from_process(&window.app.process) {
+        let page = source.browser_page(&permit, browser)?;
+        if let Some(reason) = browser::classify(&page) {
+            return Ok(CaptureOutcome::Sensitive(reason));
+        }
+    }
     let Some(snapshot) = source.read(&permit, kind)? else {
         return Ok(CaptureOutcome::Empty);
     };
@@ -94,6 +118,7 @@ where
 mod tests {
     use super::{CaptureOutcome, capture};
     use crate::app::{AppIdentity, ProcessName};
+    use crate::browser::SensitivePage;
     use crate::error::ContextError;
     use crate::fake::FakeContextSource;
     use crate::policy::{ActivePolicy, AppFilter, ModeId};
@@ -212,6 +237,77 @@ mod tests {
         let result = capture(&source, &policy(), CaptureKind::SelectedText);
 
         assert_eq!(result, Err(ContextError::ForegroundChanged));
+    }
+
+    #[test]
+    fn private_window_and_bank_site_are_never_read() {
+        let private = FakeContextSource::new()
+            .with_foreground(app("chrome.exe", "Google Chrome"), "")
+            .with_browser_page(&["Tab Baru - Google Chrome (Incognito)"], Some("contoh.id"))
+            .with_selection("teks sintetis");
+        let bank = FakeContextSource::new()
+            .with_foreground(app("msedge.exe", "Microsoft Edge"), "")
+            .with_browser_page(&["Masuk"], Some("https://ibank.klikbca.com/"))
+            .with_selection("teks sintetis");
+
+        for (source, reason) in [
+            (private, SensitivePage::PrivateWindow),
+            (bank, SensitivePage::Banking),
+        ] {
+            let outcome = capture(&source, &policy(), CaptureKind::SelectedText).unwrap();
+            assert_eq!(outcome, CaptureOutcome::Sensitive(reason));
+            assert_eq!(source.read_count(), 0);
+        }
+    }
+
+    #[test]
+    fn ordinary_browser_page_is_read_after_the_check() {
+        let source = FakeContextSource::new()
+            .with_foreground(app("firefox.exe", "Firefox"), "")
+            .with_browser_page(
+                &["Kotak masuk sintetis — Mozilla Firefox"],
+                Some("mail.contoh.id"),
+            )
+            .with_selection("teks sintetis");
+
+        let outcome = capture(&source, &policy(), CaptureKind::SelectedText).unwrap();
+
+        assert!(matches!(outcome, CaptureOutcome::Captured(_)));
+        assert_eq!(source.page_read_count(), 1);
+    }
+
+    #[test]
+    fn unreadable_browser_page_stops_the_read() {
+        let source = FakeContextSource::new()
+            .with_foreground(app("chrome.exe", "Google Chrome"), "")
+            .with_browser_page_error(ContextError::Timeout)
+            .with_selection("teks sintetis");
+
+        let result = capture(&source, &policy(), CaptureKind::SelectedText);
+
+        assert_eq!(result, Err(ContextError::Timeout));
+        assert_eq!(source.read_count(), 0);
+    }
+
+    #[test]
+    fn only_allowed_browsers_are_checked() {
+        let notepad = FakeContextSource::new()
+            .with_foreground(app("notepad.exe", "Notepad"), "")
+            .with_selection("teks sintetis");
+        let _ = capture(&notepad, &policy(), CaptureKind::SelectedText).unwrap();
+        assert_eq!(notepad.page_read_count(), 0);
+
+        let mut blocking = policy();
+        blocking.apps = AppFilter {
+            allow: None,
+            block: vec![ProcessName::new("chrome.exe").unwrap()],
+        };
+        let chrome = FakeContextSource::new()
+            .with_foreground(app("chrome.exe", "Google Chrome"), "")
+            .with_selection("teks sintetis");
+        let outcome = capture(&chrome, &blocking, CaptureKind::SelectedText).unwrap();
+        assert!(matches!(outcome, CaptureOutcome::NotAllowed(_)));
+        assert_eq!(chrome.page_read_count(), 0);
     }
 
     #[test]

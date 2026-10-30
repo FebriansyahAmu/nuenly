@@ -11,7 +11,10 @@ pub const LABEL: &str = "onboarding";
 
 /// Versi pemberitahuan privasi di langkah 2. Naikkan bila Nuenly mulai membaca hal baru, agar
 /// pengguna yang sudah setuju diminta menyetujuinya lagi.
-pub const PRIVACY_VERSION: u32 = 1;
+///
+/// 2: alamat dan judul jendela browser diperiksa untuk melewati situs perbankan dan jendela
+/// privat.
+pub const PRIVACY_VERSION: u32 = 2;
 
 /// Apakah pengguna sudah menyetujui pemberitahuan privasi versi ini.
 pub fn accepted(app: &AppHandle) -> bool {

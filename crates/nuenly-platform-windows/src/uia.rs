@@ -1,15 +1,18 @@
-//! Pembacaan UI Automation: teks terpilih untuk [`UiaContextSource`](crate::UiaContextSource),
-//! dan tree lengkap untuk diagnosis lewat `tools/uia-dump` di spike Fase 0.
+//! Pembacaan UI Automation: halaman browser dan teks terpilih untuk
+//! [`UiaContextSource`](crate::UiaContextSource), dan tree lengkap untuk diagnosis lewat
+//! `tools/uia-dump` di spike Fase 0.
 //!
 //! Semua teks dari layar dikembalikan sebagai [`SensitiveText`]. `UIElement` dari crate
 //! `uiautomation` tidak keluar dari modul ini karena `Debug` dan `Display`-nya mencetak nama
 //! elemen.
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use nuenly_core::{
-    CaptureKind, ContextError, ContextSnapshot, ControlKind, FieldInfo, ForegroundWindow,
-    ProcessName, Rect, SensitiveText,
+    Browser, BrowserPage, CaptureKind, ContextError, ContextSnapshot, ControlKind, FieldInfo,
+    ForegroundWindow, ProcessName, Rect, SensitiveText, WindowHandle,
 };
 use uiautomation::patterns::{UILegacyIAccessiblePattern, UITextPattern, UIValuePattern};
 use uiautomation::types::{ControlType, Handle};
@@ -20,12 +23,22 @@ use crate::window;
 
 /// Batas panjang teks terpilih yang dibaca per rentang, dalam unit UTF-16.
 const MAX_SELECTION_LEN: i32 = 10_000;
+/// Batas pencarian address bar: cukup untuk toolbar browser, tanpa masuk ke isi halaman.
+const ADDRESS_BAR_DEPTH: usize = 10;
+const ADDRESS_BAR_NODES: usize = 400;
+/// Address bar Chromium (Chrome, Edge, Brave, dan lainnya), dikenali dari nama kelas view-nya.
+const CHROMIUM_ADDRESS_CLASS: &str = "OmniboxViewViews";
+/// Address bar Firefox, dikenali dari id elemennya.
+const FIREFOX_ADDRESS_ID: &str = "urlbar-input";
 
 /// Klien UI Automation. COM diinisialisasi (MTA) di thread pembuat, dan klien dipakai di
 /// thread yang sama.
 pub struct Uia {
     automation: UIAutomation,
     walker: UITreeWalker,
+    /// Address bar terakhir yang ditemukan, agar tekanan hotkey berikutnya di jendela browser
+    /// yang sama tidak perlu mencari ulang.
+    address_bar: RefCell<Option<(WindowHandle, UIElement)>>,
 }
 
 /// Jendela di latar depan beserta prosesnya.
@@ -97,7 +110,11 @@ impl Uia {
         let walker = automation
             .get_control_view_walker()
             .map_err(uia_error("ControlViewWalker"))?;
-        Ok(Self { automation, walker })
+        Ok(Self {
+            automation,
+            walker,
+            address_bar: RefCell::new(None),
+        })
     }
 
     /// Jendela di latar depan, atau `None` bila tidak ada.
@@ -194,6 +211,96 @@ impl Uia {
             previous_siblings: self.previous_siblings(&element, 3),
             elapsed,
         }))
+    }
+
+    /// Judul dan isi address bar `window`, hanya untuk memeriksa jendela privat dan situs
+    /// perbankan. Isi halaman tidak disentuh: pencarian address bar tidak masuk ke dokumen web.
+    ///
+    /// # Errors
+    ///
+    /// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan,
+    /// [`ContextError::Unsupported`] bila address bar ditemukan tetapi isinya tidak bisa dibaca,
+    /// atau error platform lain.
+    pub(crate) fn browser_page(
+        &self,
+        window: &ForegroundWindow,
+        browser: Browser,
+    ) -> Result<BrowserPage, ContextError> {
+        let hwnd = window::foreground();
+        if window::handle(hwnd) != window.handle {
+            return Err(ContextError::ForegroundChanged);
+        }
+        let element = self
+            .automation
+            .element_from_handle(Handle::from(hwnd))
+            .map_err(uia_error("ElementFromHandle"))?;
+        // Chrome menandai jendela Incognito di nama aksesibilitasnya, bukan di judul native.
+        let titles = vec![
+            window::title(hwnd),
+            SensitiveText::new(element.get_name().unwrap_or_default()),
+        ];
+        Ok(BrowserPage {
+            titles,
+            address: self.address(window.handle, &element, browser)?,
+        })
+    }
+
+    /// Isi address bar, atau `None` bila jendela tidak punya address bar.
+    fn address(
+        &self,
+        handle: WindowHandle,
+        window: &UIElement,
+        browser: Browser,
+    ) -> Result<Option<SensitiveText>, ContextError> {
+        let cached = self
+            .address_bar
+            .borrow()
+            .as_ref()
+            .filter(|(owner, _)| *owner == handle)
+            .and_then(|(_, element)| value(element));
+        if cached.is_some() {
+            return Ok(cached);
+        }
+
+        let Some(bar) = self.find_address_bar(window, browser)? else {
+            return Ok(None);
+        };
+        let address = value(&bar).ok_or(ContextError::Unsupported)?;
+        *self.address_bar.borrow_mut() = Some((handle, bar));
+        Ok(Some(address))
+    }
+
+    /// Mencari address bar secara melebar dari jendela. Dokumen web dan tab dilewati, jadi isi
+    /// halaman tidak ikut ditelusuri.
+    fn find_address_bar(
+        &self,
+        window: &UIElement,
+        browser: Browser,
+    ) -> Result<Option<UIElement>, ContextError> {
+        let mut queue = VecDeque::from([(window.clone(), 0usize)]);
+        let mut visited = 0;
+        while let Some((element, depth)) = queue.pop_front() {
+            if is_address_bar(&element, browser) {
+                return Ok(Some(element));
+            }
+            visited += 1;
+            if visited >= ADDRESS_BAR_NODES {
+                break;
+            }
+            let leaf = depth >= ADDRESS_BAR_DEPTH
+                || matches!(
+                    element.get_control_type(),
+                    Ok(ControlType::Document | ControlType::TabItem)
+                );
+            if !leaf {
+                queue.extend(
+                    self.children(&element)?
+                        .into_iter()
+                        .map(|child| (child, depth + 1)),
+                );
+            }
+        }
+        Ok(None)
     }
 
     /// Membaca teks terpilih di `window`. `None` bila elemen fokus tidak mengekspos seleksi.
@@ -322,6 +429,27 @@ fn describe(element: &UIElement) -> UiaNode {
             })
         }),
     }
+}
+
+fn is_address_bar(element: &UIElement, browser: Browser) -> bool {
+    match browser {
+        Browser::Chromium => element
+            .get_classname()
+            .is_ok_and(|class| class == CHROMIUM_ADDRESS_CLASS),
+        Browser::Firefox => element
+            .get_automation_id()
+            .is_ok_and(|id| id == FIREFOX_ADDRESS_ID),
+        _ => false,
+    }
+}
+
+fn value(element: &UIElement) -> Option<SensitiveText> {
+    element
+        .get_pattern::<UIValuePattern>()
+        .ok()?
+        .get_value()
+        .ok()
+        .map(SensitiveText::new)
 }
 
 fn control_kind(element: &UIElement) -> ControlKind {
