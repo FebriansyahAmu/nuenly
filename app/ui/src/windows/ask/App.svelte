@@ -1,5 +1,6 @@
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check';
+  import EyeOff from '@lucide/svelte/icons/eye-off';
   import X from '@lucide/svelte/icons/x';
   import { invoke, isTauri } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
@@ -10,7 +11,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
 
-  import type { AskContext } from './backend';
+  import type { AskContext, AskNotice, AskOpen } from './backend';
   import type { AskSession } from './session.svelte';
 
   let { session }: { session: AskSession } = $props();
@@ -18,6 +19,13 @@
   const SOURCE_LABEL: Record<AskContext['source'], string> = {
     selection: 'Teks terpilih',
     field: 'Isi field',
+  };
+
+  const NOTICE: Record<AskNotice, string> = {
+    paused: 'Nuenly sedang dijeda, jadi teks terpilih tidak dibaca.',
+    notAllowed: 'Nuenly tidak membaca aplikasi ini.',
+    protectedField: 'Isi field kata sandi tidak dibaca.',
+    unreadable: 'Teks terpilih tidak bisa dibaca dari aplikasi ini.',
   };
 
   let input = $state<HTMLInputElement>();
@@ -60,8 +68,8 @@
       return;
     }
     // Rust mengirim `ask:open` setiap kali jendela dibuka; sesi lama dibuang.
-    const stop = listen<{ context?: AskContext | null } | null>('ask:open', async ({ payload }) => {
-      session.open(payload?.context ?? null);
+    const stop = listen<AskOpen>('ask:open', async ({ payload }) => {
+      session.open(payload.context, payload.notice);
       copied = false;
       await tick();
       input?.focus();
@@ -120,6 +128,11 @@
             </button>
           </Badge>
         </div>
+      {:else if session.notice}
+        <p class="flex items-center gap-2 text-sm text-muted-foreground">
+          <EyeOff class="size-4 shrink-0" aria-hidden="true" />
+          {NOTICE[session.notice]}
+        </p>
       {/if}
 
       {#if session.phase === 'idle'}

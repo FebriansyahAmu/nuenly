@@ -3,6 +3,7 @@
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use nuenly_core::{ActivePolicy, ModeId};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -71,6 +72,13 @@ impl Status {
         self.paused_until = None;
     }
 
+    /// Kebijakan mode aktif. Sementara berisi nilai bawaan `ActivePolicy` sampai `ModeManager`
+    /// (F-14) memuatnya dari mode pack.
+    pub fn policy(&self) -> Option<ActivePolicy> {
+        let mode = MODES.get(self.active)?;
+        ModeId::new(mode.id).ok().map(ActivePolicy::new)
+    }
+
     /// Status pada waktu `now`; jeda yang sudah lewat dianggap selesai.
     pub fn view(&self, now: SystemTime) -> StatusView {
         let paused_until_ms = self
@@ -99,6 +107,15 @@ impl AppStatus {
 
     pub fn view(&self) -> StatusView {
         self.update(|_| ()).1
+    }
+
+    /// Kebijakan baca saat ini, atau `None` selama dijeda: Nuenly tidak membaca apa pun.
+    pub fn reading_policy(&self) -> Option<ActivePolicy> {
+        let status = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if status.view(SystemTime::now()).paused_until_ms.is_some() {
+            return None;
+        }
+        status.policy()
     }
 }
 
@@ -203,6 +220,17 @@ mod tests {
         assert!(status.set_mode("medical"));
         assert!(!status.set_mode("tidak-ada"));
         assert_eq!(status.view(UNIX_EPOCH).active_mode, "medical");
+        assert_eq!(status.policy().unwrap().mode.as_str(), "medical");
+    }
+
+    #[test]
+    fn every_mode_has_a_local_only_policy() {
+        let mut status = Status::default();
+        for mode in super::MODES {
+            assert!(status.set_mode(mode.id));
+            let policy = status.policy().unwrap();
+            assert_eq!(policy.egress, nuenly_core::Egress::LocalOnly);
+        }
     }
 
     #[test]

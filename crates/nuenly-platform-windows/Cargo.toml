@@ -9,15 +9,18 @@ publish.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 nuenly-core.workspace = true
+thiserror.workspace = true
 uiautomation.workspace = true
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Dxgi",
+    "Win32_Storage_FileSystem",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

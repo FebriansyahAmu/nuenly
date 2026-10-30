@@ -1,4 +1,4 @@
-//! Nama executable dari ID proses.
+//! Nama dan path executable dari ID proses.
 
 use nuenly_core::{ContextError, ProcessName};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -19,6 +19,18 @@ const PATH_CAPACITY: u32 = 32_768;
 ///
 /// [`ContextError::Platform`] bila proses tidak bisa dibuka atau path-nya tidak bisa dibaca.
 pub fn process_name(pid: u32) -> Result<ProcessName, ContextError> {
+    name_of(&process_path(pid)?)
+}
+
+pub(crate) fn name_of(path: &str) -> Result<ProcessName, ContextError> {
+    ProcessName::new(path).map_err(|_| ContextError::Platform {
+        operation: "QueryFullProcessImageNameW",
+        code: 0,
+    })
+}
+
+/// Path lengkap executable dari proses `pid`, dengan cara yang sama seperti [`process_name`].
+pub(crate) fn process_path(pid: u32) -> Result<String, ContextError> {
     // SAFETY: OpenProcess tidak punya prasyarat pada argumennya. Handle yang berhasil dibuka
     // langsung dibungkus `ProcessHandle`, yang menutupnya tepat sekali saat di-drop.
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
@@ -40,14 +52,10 @@ pub fn process_name(pid: u32) -> Result<ProcessName, ContextError> {
     }
     .map_err(win32_error("QueryFullProcessImageNameW"))?;
 
-    let path = buffer
+    Ok(buffer
         .get(..len as usize)
         .map(String::from_utf16_lossy)
-        .unwrap_or_default();
-    ProcessName::new(&path).map_err(|_| ContextError::Platform {
-        operation: "QueryFullProcessImageNameW",
-        code: 0,
-    })
+        .unwrap_or_default())
 }
 
 /// Handle proses yang ditutup saat di-drop.

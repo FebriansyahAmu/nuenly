@@ -1,4 +1,4 @@
-import { type AskBackend, type AskContext, AskError } from './backend';
+import { type AskBackend, type AskContext, AskError, type AskNotice } from './backend';
 
 export type AskPhase = 'idle' | 'streaming' | 'done' | 'error';
 
@@ -7,6 +7,8 @@ const GENERIC_ERROR = 'Nuenly tidak bisa menjawab sekarang. Coba lagi sebentar l
 /** Status satu sesi Tanya Nuenly, dari jendela dibuka sampai ditutup. */
 export class AskSession {
   context = $state<AskContext | null>(null);
+  /** Kenapa teks terpilih tidak dipakai, misalnya karena Nuenly dijeda. */
+  notice = $state<AskNotice | null>(null);
   prompt = $state('');
   answer = $state('');
   phase = $state<AskPhase>('idle');
@@ -30,9 +32,10 @@ export class AskSession {
   }
 
   /** Memulai sesi baru, misalnya setiap kali hotkey ditekan. */
-  open(context: AskContext | null): void {
+  open(context: AskContext | null, notice: AskNotice | null = null): void {
     this.#run += 1;
     this.context = context;
+    this.notice = context === null ? notice : null;
     this.prompt = '';
     this.answer = '';
     this.phase = 'idle';

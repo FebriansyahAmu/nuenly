@@ -4,6 +4,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::config::{Config, ConfigStore};
+use crate::hotkey::{HotkeyState, HotkeyStatus};
 
 /// Pintasan Tanya Nuenly. Tetap sampai hotkey bisa diubah (F-03).
 const HOTKEY: &str = "Ctrl+Space";
@@ -16,15 +17,17 @@ pub struct SettingsView {
     /// Model pilihan pengguna; `None` berarti dipilih otomatis sesuai kemampuan PC.
     pub model: Option<String>,
     pub hotkey: &'static str,
+    pub hotkey_status: HotkeyStatus,
     pub ollama_address: String,
     /// Aplikasi yang tidak pernah dibaca, apa pun modenya.
     pub blocked_apps: &'static [&'static str],
 }
 
-fn view(config: &Config) -> SettingsView {
+fn view(config: &Config, hotkey: HotkeyStatus) -> SettingsView {
     SettingsView {
         model: config.model.clone(),
         hotkey: HOTKEY,
+        hotkey_status: hotkey,
         ollama_address: nuenly_llm::ollama::DEFAULT_ADDRESS.to_string(),
         blocked_apps: nuenly_core::ALWAYS_BLOCKED,
     }
@@ -32,8 +35,8 @@ fn view(config: &Config) -> SettingsView {
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri menyuntikkan state sebagai nilai.
-pub fn settings_get(store: State<'_, ConfigStore>) -> SettingsView {
-    view(&store.get())
+pub fn settings_get(store: State<'_, ConfigStore>, hotkey: State<'_, HotkeyState>) -> SettingsView {
+    view(&store.get(), hotkey.status)
 }
 
 /// Menyimpan model pilihan; `None` kembali ke pilihan otomatis.
@@ -41,6 +44,7 @@ pub fn settings_get(store: State<'_, ConfigStore>) -> SettingsView {
 #[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
 pub fn settings_set_model(
     store: State<'_, ConfigStore>,
+    hotkey: State<'_, HotkeyState>,
     model: Option<String>,
 ) -> Result<SettingsView, String> {
     if model.as_deref().is_some_and(|name| !valid_model_name(name)) {
@@ -48,7 +52,7 @@ pub fn settings_set_model(
     }
     store
         .update(|config| config.model = model)
-        .map(|config| view(&config))
+        .map(|config| view(&config, hotkey.status))
         .map_err(|_| "Pilihan model tidak bisa disimpan. Coba lagi.".to_owned())
 }
 
@@ -65,6 +69,7 @@ fn valid_model_name(name: &str) -> bool {
 mod tests {
     use super::{valid_model_name, view};
     use crate::config::Config;
+    use crate::hotkey::HotkeyStatus;
 
     #[test]
     fn accepts_ollama_model_names() {
@@ -96,8 +101,9 @@ mod tests {
 
     #[test]
     fn shows_the_fixed_loopback_address_and_blocked_apps() {
-        let settings = view(&Config::default());
+        let settings = view(&Config::default(), HotkeyStatus::Taken);
         assert_eq!(settings.model, None);
+        assert_eq!(settings.hotkey_status, HotkeyStatus::Taken);
         assert_eq!(settings.ollama_address, "127.0.0.1:11434");
         assert!(settings.blocked_apps.contains(&"keepass.exe"));
     }

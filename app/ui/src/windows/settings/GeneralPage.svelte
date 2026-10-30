@@ -27,7 +27,16 @@
   <div class="flex items-center justify-between gap-4 px-5 py-3.5">
     <div>
       <p class="font-medium">Tanya Nuenly</p>
-      <p class="text-[13px] text-muted-foreground">Pilih teks di aplikasi apa pun, lalu tekan pintasan ini.</p>
+      {#if state.settings.hotkeyStatus === 'active'}
+        <p class="text-[13px] text-muted-foreground">Pilih teks di aplikasi apa pun, lalu tekan pintasan ini.</p>
+      {:else}
+        <p class="text-[13px] text-amber-700">
+          {state.settings.hotkeyStatus === 'taken'
+            ? 'Pintasan ini sedang dipakai aplikasi lain.'
+            : 'Pintasan ini belum bisa dipasang.'}
+          Buka Tanya Nuenly lewat klik kanan ikon Nuenly di tray.
+        </p>
+      {/if}
     </div>
     <span class="flex shrink-0 items-center gap-1 text-muted-foreground">
       {#each keys as key, index (key)}

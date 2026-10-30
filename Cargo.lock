@@ -2034,6 +2034,7 @@ name = "nuenly-platform-windows"
 version = "0.1.0"
 dependencies = [
  "nuenly-core",
+ "thiserror 2.0.21",
  "uiautomation",
  "windows",
  "zeroize",

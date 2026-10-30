@@ -5,6 +5,15 @@ export interface AskContext {
   appName: string;
 }
 
+/** Alasan teks terpilih tidak dipakai; sama dengan `Notice` di `app/src/ask.rs`. */
+export type AskNotice = 'paused' | 'notAllowed' | 'protectedField' | 'unreadable';
+
+/** Isi event `ask:open`; sama dengan `AskOpen` di `app/src/ask.rs`. */
+export interface AskOpen {
+  context: AskContext | null;
+  notice: AskNotice | null;
+}
+
 export interface AskRequest {
   prompt: string;
   /** `false` bila pengguna menghapus chip konteks. */

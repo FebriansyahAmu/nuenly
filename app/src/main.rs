@@ -6,7 +6,9 @@
 mod ask;
 mod clipboard;
 mod config;
+mod context;
 mod hardware;
+mod hotkey;
 mod ollama;
 mod onboarding;
 mod settings;
@@ -22,6 +24,7 @@ fn main() -> anyhow::Result<()> {
     nuenly_platform_windows::harden_dll_search().context("gagal membatasi pencarian DLL")?;
 
     tauri::Builder::default()
+        .manage(ask::AskState::default())
         .manage(hardware::HardwareState::default())
         .manage(status::AppStatus::default())
         .manage(tray::PopupState::default())
@@ -45,6 +48,9 @@ fn main() -> anyhow::Result<()> {
             let config = app.path().app_config_dir()?.join(config::FILE_NAME);
             app.manage(config::ConfigStore::load(config));
             app.manage(nuenly_llm::OllamaProvider::new()?);
+            app.manage(context::ContextReader::new());
+            // Didaftarkan setelah semua state yang dipakai alur hotkey tersedia.
+            app.manage(hotkey::register(app.handle()));
             tray::create(app.handle())?;
             // Nuenly tidak membaca apa pun sampai pemberitahuan privasi disetujui.
             if !onboarding::accepted(app.handle()) {
@@ -58,9 +64,11 @@ fn main() -> anyhow::Result<()> {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            // Tanya Nuenly tertutup sendiri saat pengguna pindah ke jendela lain.
+            // Tanya Nuenly tertutup sendiri saat pengguna pindah ke jendela lain, termasuk saat
+            // disembunyikan lewat Esc.
             WindowEvent::Focused(false) if window.label() == ask::LABEL => {
                 let _ = window.hide();
+                ask::closed(window.app_handle());
             }
             // Popup tray juga menutup sendiri, seperti flyout Windows.
             WindowEvent::Focused(false) if window.label() == tray::POPUP => {
