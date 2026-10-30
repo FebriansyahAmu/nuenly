@@ -4,7 +4,12 @@
 import type { AskBackend, AskContext, AskNotice } from './backend';
 import { AskSession } from './session.svelte';
 
-const CONTEXT: AskContext = { source: 'selection', appName: 'Mail' };
+const CONTEXT: AskContext = {
+  source: 'selection',
+  appName: 'Mail',
+  preview:
+    'jadi gini, rapat minggu depan digeser ke kamis aja soalnya ruangan dipake dan materi dari tim keuangan belum lengkap. tolong kabarin bisa ga',
+};
 const PROMPT = 'Rapikan jadi formal dan singkat';
 const ANSWER = `Halo semua,
 
@@ -28,13 +33,14 @@ const NOTICES: AskNotice[] = ['paused', 'notAllowed', 'privateWindow', 'banking'
 
 /**
  * `?jawab` langsung menjalankan perintah contoh; `?panjang` menandai teks terpilih terpotong;
- * `?kosong` membuka tanpa konteks; `?catatan=<alasan>` (lihat `NOTICES`) membuka tanpa konteks
- * beserta alasannya.
+ * `?tanpa-cuplikan` meniru mode yang tidak menampilkan cuplikan; `?kosong` membuka tanpa
+ * konteks; `?catatan=<alasan>` (lihat `NOTICES`) membuka tanpa konteks beserta alasannya.
  */
 export function demoSession(params: URLSearchParams): AskSession {
   const session = new AskSession(backend(params.has('panjang')));
   const notice = NOTICES.find((candidate) => candidate === params.get('catatan')) ?? null;
-  session.open(params.has('kosong') || notice !== null ? null : CONTEXT, notice);
+  const context = params.has('tanpa-cuplikan') ? { ...CONTEXT, preview: null } : CONTEXT;
+  session.open(params.has('kosong') || notice !== null ? null : context, notice);
   session.prompt = PROMPT;
   if (params.has('jawab')) {
     void session.submit();

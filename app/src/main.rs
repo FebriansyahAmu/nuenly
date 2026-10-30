@@ -37,6 +37,7 @@ fn main() -> anyhow::Result<()> {
             onboarding::onboarding_accept,
             onboarding::onboarding_finish,
             settings::settings_get,
+            settings::settings_set_hotkey,
             settings::settings_set_model,
             status::status_get,
             status::status_pause,
@@ -52,7 +53,8 @@ fn main() -> anyhow::Result<()> {
             app.manage(nuenly_llm::OllamaProvider::new()?);
             app.manage(context::ContextReader::new());
             // Didaftarkan setelah semua state yang dipakai alur hotkey tersedia.
-            app.manage(hotkey::register(app.handle()));
+            let shortcut = hotkey::configured(&app.state::<config::ConfigStore>().get());
+            app.manage(hotkey::HotkeyState::register(app.handle(), shortcut));
             tray::create(app.handle())?;
             // Nuenly tidak membaca apa pun sampai pemberitahuan privasi disetujui.
             if !onboarding::accepted(app.handle()) {

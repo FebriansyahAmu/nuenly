@@ -16,6 +16,8 @@ pub struct Config {
     pub privacy_accepted: u32,
     /// Model Ollama pilihan pengguna; `None` berarti dipilih otomatis sesuai kemampuan PC.
     pub model: Option<String>,
+    /// Pintasan Tanya Nuenly, misalnya `Alt+Space`; `None` berarti bawaan (Ctrl+Space).
+    pub hotkey: Option<String>,
 }
 
 /// State terkelola Tauri: setelan di memori beserta lokasinya di disk.

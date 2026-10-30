@@ -19,11 +19,14 @@ const MODES: [ModeInfo; 2] = [
         id: "all",
         label: "Umum",
         accent: "#4f46e5",
+        context_preview: true,
     },
     ModeInfo {
         id: "medical",
         label: "Medical",
         accent: "#0f766e",
+        // Teks klinis tidak ditampilkan ulang; aturan Medical lengkap menyusul di mode pack.
+        context_preview: false,
     },
 ];
 
@@ -33,6 +36,9 @@ pub struct ModeInfo {
     pub label: &'static str,
     /// Warna aksen mode untuk sentuhan kecil di UI (titik logo, segmen aktif).
     pub accent: &'static str,
+    /// Nilai `ActivePolicy::context_preview` untuk mode ini.
+    #[serde(skip)]
+    pub context_preview: bool,
 }
 
 /// Status untuk jendela; dikirim lewat `status_get` dan event `status:changed`.
@@ -76,7 +82,9 @@ impl Status {
     /// (F-14) memuatnya dari mode pack.
     pub fn policy(&self) -> Option<ActivePolicy> {
         let mode = MODES.get(self.active)?;
-        ModeId::new(mode.id).ok().map(ActivePolicy::new)
+        let mut policy = ActivePolicy::new(ModeId::new(mode.id).ok()?);
+        policy.context_preview = mode.context_preview;
+        Some(policy)
     }
 
     /// Status pada waktu `now`; jeda yang sudah lewat dianggap selesai.
@@ -221,6 +229,14 @@ mod tests {
         assert!(!status.set_mode("tidak-ada"));
         assert_eq!(status.view(UNIX_EPOCH).active_mode, "medical");
         assert_eq!(status.policy().unwrap().mode.as_str(), "medical");
+    }
+
+    #[test]
+    fn only_umum_shows_the_selected_text() {
+        let mut status = Status::default();
+        assert!(status.policy().unwrap().context_preview);
+        assert!(status.set_mode("medical"));
+        assert!(!status.policy().unwrap().context_preview);
     }
 
     #[test]

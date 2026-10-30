@@ -17,6 +17,9 @@ pub enum LlmError {
     /// Model cloud: server model lokal akan meneruskan teks ke luar PC.
     #[error("model ini berjalan di luar PC dan tidak dipakai")]
     RemoteModel,
+    /// Server gagal memuat model, biasanya karena memori GPU atau RAM tidak cukup.
+    #[error("server model gagal memuat model")]
+    ModelLoad,
     #[error("server model menjawab dengan status HTTP {0}")]
     Status(u16),
     /// Server model melaporkan kegagalan di tengah jawaban.

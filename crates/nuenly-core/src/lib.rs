@@ -14,6 +14,7 @@ mod error;
 #[cfg(any(test, feature = "fake"))]
 mod fake;
 mod policy;
+mod shortcut;
 mod snapshot;
 mod source;
 mod text;
@@ -27,6 +28,7 @@ pub use policy::{
     ALWAYS_BLOCKED, ActivePolicy, AppFilter, Egress, ModeId, ProactivePolicy, ReadPermit,
     RedactionLevel,
 };
+pub use shortcut::{Key, Shortcut};
 pub use snapshot::{CaptureKind, ContextSnapshot, ControlKind, FieldInfo, Rect};
 pub use source::{CaptureOutcome, ContextSource, capture};
 pub use text::SensitiveText;

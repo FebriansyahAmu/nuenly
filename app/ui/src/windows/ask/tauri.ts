@@ -11,6 +11,7 @@ export type AskFailure =
   | 'noModel'
   | 'modelMissing'
   | 'modelTooLarge'
+  | 'modelLoad'
   | 'tooLong'
   | 'timeout'
   | 'cancelled'
@@ -21,6 +22,8 @@ const FAILURE: Record<AskFailure, string> = {
   noModel: 'Belum ada model di Ollama. Caranya ada di Pengaturan › Model AI.',
   modelMissing: 'Model pilihan Anda tidak ada di Ollama. Pilih model lain di Pengaturan › Model AI.',
   modelTooLarge: 'Model ini terlalu berat untuk PC ini. Pilih model yang lebih kecil di Pengaturan › Model AI.',
+  modelLoad:
+    'Model tidak bisa dimuat karena memori GPU atau RAM sedang tidak cukup. Tutup aplikasi yang berat, atau pilih model yang lebih kecil di Pengaturan › Model AI.',
   tooLong: 'Perintahnya terlalu panjang. Coba persingkat.',
   timeout: 'Model terlalu lama menjawab. Coba lagi.',
   cancelled: 'Jawaban dihentikan.',

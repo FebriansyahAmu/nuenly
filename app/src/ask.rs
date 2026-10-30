@@ -75,7 +75,13 @@ pub struct ContextView {
     pub source: &'static str,
     /// Nama aplikasi dari metadata executable, bukan dari layar.
     pub app_name: String,
+    /// Cuplikan satu baris, paling banyak [`PREVIEW_CHARS`] karakter, bila kebijakan mode
+    /// mengizinkan (`ActivePolicy::context_preview`). Teks utuhnya tetap di Rust.
+    pub preview: Option<String>,
 }
+
+/// Panjang cuplikan teks terpilih yang dikirim ke jendela, dalam karakter.
+const PREVIEW_CHARS: usize = 200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,11 +150,18 @@ fn read_selection(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
         };
         return (None, open);
     };
-    prepare(app.state::<ContextReader>().selection(&policy))
+    prepare(
+        app.state::<ContextReader>().selection(&policy),
+        policy.context_preview,
+    )
 }
 
-/// Memisahkan hasil baca menjadi teks konteks (tetap di Rust) dan isi event untuk jendela.
-fn prepare(result: Result<CaptureOutcome, ContextError>) -> (Option<ContextSnapshot>, AskOpen) {
+/// Memisahkan hasil baca menjadi teks konteks (tetap di Rust) dan isi event untuk jendela,
+/// dengan cuplikan teks hanya bila `show_preview`.
+fn prepare(
+    result: Result<CaptureOutcome, ContextError>,
+    show_preview: bool,
+) -> (Option<ContextSnapshot>, AskOpen) {
     let notice = match result {
         Ok(CaptureOutcome::Captured(snapshot)) => {
             let context = ContextView {
@@ -157,6 +170,7 @@ fn prepare(result: Result<CaptureOutcome, ContextError>) -> (Option<ContextSnaps
                     _ => "field",
                 },
                 app_name: snapshot.app.display_name.clone(),
+                preview: show_preview.then(|| preview(snapshot.text.expose())),
             };
             let open = AskOpen {
                 context: Some(context),
@@ -179,6 +193,33 @@ fn prepare(result: Result<CaptureOutcome, ContextError>) -> (Option<ContextSnaps
             notice,
         },
     )
+}
+
+/// Awal `text` dalam satu baris: spasi dan baris baru diringkas menjadi satu spasi, lalu
+/// dipotong di [`PREVIEW_CHARS`] karakter dengan "…". Teks sisanya tidak pernah disalin.
+fn preview(text: &str) -> String {
+    let mut preview = String::with_capacity(PREVIEW_CHARS * 4 + '…'.len_utf8());
+    let mut chars = 0;
+    let mut words = text.split_whitespace().peekable();
+    while let Some(word) = words.next() {
+        for c in word.chars() {
+            if chars == PREVIEW_CHARS {
+                preview.push('…');
+                return preview;
+            }
+            preview.push(c);
+            chars += 1;
+        }
+        if words.peek().is_some() {
+            if chars == PREVIEW_CHARS {
+                preview.push('…');
+                return preview;
+            }
+            preview.push(' ');
+            chars += 1;
+        }
+    }
+    preview
 }
 
 /// Membuka Tanya Nuenly di monitor tempat kursor berada dan memulai sesi baru.
@@ -214,7 +255,7 @@ mod tests {
         FakeContextSource, FieldInfo, ModeId, ProcessName, capture,
     };
 
-    use super::{ContextView, Notice, prepare};
+    use super::{ContextView, Notice, PREVIEW_CHARS, prepare, preview};
 
     fn app(process: &str, display_name: &str) -> AppIdentity {
         AppIdentity {
@@ -228,34 +269,66 @@ mod tests {
     }
 
     fn read(source: &FakeContextSource, policy: &ActivePolicy) -> super::AskOpen {
-        let (context, open) = prepare(capture(source, policy, CaptureKind::SelectedText));
+        let (context, open) = prepare(
+            capture(source, policy, CaptureKind::SelectedText),
+            policy.context_preview,
+        );
         // Teks hanya disimpan bersama konteks yang ditampilkan di chip.
         assert_eq!(context.is_some(), open.context.is_some());
         open
     }
 
-    #[test]
-    fn selected_text_stays_in_rust_and_only_its_origin_is_sent() {
-        let source = FakeContextSource::new()
+    fn notepad() -> FakeContextSource {
+        FakeContextSource::new()
             .with_foreground(app("notepad.exe", "Notepad"), "catatan.txt")
-            .with_selection("rapat sintetis digeser ke kamis");
+            .with_selection("rapat sintetis\n\ndigeser ke   kamis")
+    }
 
-        let (context, open) = prepare(capture(&source, &policy(), CaptureKind::SelectedText));
+    #[test]
+    fn without_preview_only_the_origin_is_sent() {
+        let (context, open) = prepare(
+            capture(&notepad(), &policy(), CaptureKind::SelectedText),
+            false,
+        );
 
         assert_eq!(
             context.unwrap().text.expose(),
-            "rapat sintetis digeser ke kamis"
+            "rapat sintetis\n\ndigeser ke   kamis"
         );
         assert_eq!(
             open.context,
             Some(ContextView {
                 source: "selection",
                 app_name: "Notepad".to_owned(),
+                preview: None,
             })
         );
         let json = serde_json::to_string(&open).unwrap();
         assert!(!json.contains("sintetis"));
         assert!(!json.contains("catatan"));
+    }
+
+    #[test]
+    fn with_preview_a_one_line_excerpt_is_sent() {
+        let mut umum = policy();
+        umum.context_preview = true;
+
+        let open = read(&notepad(), &umum);
+
+        assert_eq!(
+            open.context.unwrap().preview.as_deref(),
+            Some("rapat sintetis digeser ke kamis")
+        );
+    }
+
+    #[test]
+    fn preview_is_cut_without_copying_the_rest() {
+        let long = "kata ".repeat(100);
+        let cut = preview(&long);
+        assert_eq!(cut.chars().count(), PREVIEW_CHARS + 1);
+        assert!(cut.ends_with('…'));
+        assert_eq!(preview("  satu\tdua\r\n"), "satu dua");
+        assert_eq!(preview(""), "");
     }
 
     #[test]
@@ -291,7 +364,10 @@ mod tests {
                 },
                 "sandi-sintetis",
             );
-        let (context, open) = prepare(capture(&password, &policy(), CaptureKind::FocusedField));
+        let (context, open) = prepare(
+            capture(&password, &policy(), CaptureKind::FocusedField),
+            false,
+        );
         assert!(context.is_none());
         assert_eq!(open.notice, Some(Notice::ProtectedField));
     }
@@ -317,7 +393,7 @@ mod tests {
     #[test]
     fn platform_errors_open_without_context() {
         for err in [ContextError::Timeout, ContextError::ForegroundChanged] {
-            let (context, open) = prepare(Err(err));
+            let (context, open) = prepare(Err(err), true);
             assert!(context.is_none());
             assert_eq!(open.notice, Some(Notice::Unreadable));
         }

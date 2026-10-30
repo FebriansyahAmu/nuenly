@@ -30,6 +30,7 @@ const running = (models: string[]) => info('running', models);
 function backend(overrides: Partial<SettingsBackend> = {}): SettingsBackend {
   return {
     setModel: (model) => Promise.resolve({ ...SETTINGS, model }),
+    setHotkey: (shortcut) => Promise.resolve({ ...SETTINGS, hotkey: shortcut ?? 'Ctrl+Space' }),
     checkOllama: () => Promise.resolve(running(['gpt-oss:20b'])),
     openDownload: () => Promise.resolve(),
     setMode: (id) => Promise.resolve({ ...STATUS, activeMode: id }),
@@ -100,6 +101,31 @@ describe('SettingsState', () => {
 
     expect(state.settings.model).toBeNull();
     expect(state.error).toBe('Pilihan model tidak bisa disimpan. Coba lagi.');
+  });
+
+  it('mengganti pintasan dan kembali ke bawaan', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+
+    await state.setHotkey('Alt+Space');
+    expect(state.settings.hotkey).toBe('Alt+Space');
+    expect(state.hotkeyError).toBeNull();
+
+    await state.setHotkey(null);
+    expect(state.settings.hotkey).toBe('Ctrl+Space');
+  });
+
+  it('menjelaskan pintasan yang ditolak tanpa detail teknis', async () => {
+    const failing = (error: unknown) =>
+      new SettingsState(backend({ setHotkey: () => Promise.reject(error) }), SETTINGS, STATUS);
+
+    const taken = failing('taken');
+    await taken.setHotkey('Alt+Space');
+    expect(taken.settings.hotkey).toBe('Ctrl+Space');
+    expect(taken.hotkeyError).toBe('Kombinasi ini sudah dipakai aplikasi lain. Pintasan lama tetap dipakai.');
+
+    const unknown = failing('Command settings_set_hotkey not allowed');
+    await unknown.setHotkey('Alt+Space');
+    expect(unknown.hotkeyError).toBe('Perubahan tidak bisa disimpan. Coba lagi.');
   });
 
   it('menjeda lalu melanjutkan', async () => {
