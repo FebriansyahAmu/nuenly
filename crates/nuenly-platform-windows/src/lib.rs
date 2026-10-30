@@ -8,6 +8,7 @@
 pub mod clipboard;
 mod hardening;
 mod process;
+pub mod shell;
 pub mod uia;
 
 pub use hardening::harden_dll_search;

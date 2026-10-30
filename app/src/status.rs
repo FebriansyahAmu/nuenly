@@ -6,6 +6,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::onboarding;
+
 /// Lama jeda dari tombol "Jeda 15 menit".
 const PAUSE: Duration = Duration::from_mins(15);
 
@@ -146,15 +148,20 @@ pub fn status_resume(app: AppHandle, status: State<'_, AppStatus>) -> StatusView
     view
 }
 
-fn broadcast(app: &AppHandle, view: &StatusView) {
+/// Mengirim status ke semua jendela dan memperbarui tooltip ikon tray.
+pub fn broadcast(app: &AppHandle, view: &StatusView) {
     let _ = app.emit("status:changed", view);
     if let Some(tray) = app.tray_by_id(crate::tray::ID) {
-        let _ = tray.set_tooltip(Some(tooltip(view)));
+        let _ = tray.set_tooltip(Some(tooltip(view, onboarding::accepted(app))));
     }
 }
 
-/// Tooltip ikon tray, misalnya "Nuenly · Umum" atau "Nuenly · dijeda".
-pub fn tooltip(view: &StatusView) -> String {
+/// Tooltip ikon tray, misalnya "Nuenly · Umum" atau "Nuenly · dijeda". Sebelum persetujuan
+/// privasi di onboarding: "Nuenly · belum aktif".
+pub fn tooltip(view: &StatusView, accepted: bool) -> String {
+    if !accepted {
+        return "Nuenly · belum aktif".to_owned();
+    }
     if view.paused_until_ms.is_some() {
         return "Nuenly · dijeda".to_owned();
     }
@@ -177,7 +184,17 @@ mod tests {
         let view = Status::default().view(UNIX_EPOCH);
         assert_eq!(view.active_mode, "all");
         assert_eq!(view.paused_until_ms, None);
-        assert_eq!(tooltip(&view), "Nuenly · Umum");
+        assert_eq!(tooltip(&view, true), "Nuenly · Umum");
+    }
+
+    #[test]
+    fn inactive_until_privacy_is_accepted() {
+        let mut status = Status::default();
+        status.pause(UNIX_EPOCH, Duration::from_mins(15));
+        assert_eq!(
+            tooltip(&status.view(UNIX_EPOCH), false),
+            "Nuenly · belum aktif"
+        );
     }
 
     #[test]
@@ -196,7 +213,7 @@ mod tests {
 
         let paused = status.view(now);
         assert_eq!(paused.paused_until_ms, Some(1_900_000));
-        assert_eq!(tooltip(&paused), "Nuenly · dijeda");
+        assert_eq!(tooltip(&paused, true), "Nuenly · dijeda");
         assert_eq!(
             status.view(now + Duration::from_mins(15)).paused_until_ms,
             None

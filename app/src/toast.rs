@@ -14,9 +14,6 @@ const WIDTH: f64 = 400.0;
 const INITIAL_HEIGHT: f64 = 160.0;
 const MAX_HEIGHT: f64 = 640.0;
 
-// Produsen toast (trigger engine, policy gate) baru ada di Fase 2; sampai itu hanya submenu
-// uji di build debug yang memakai tipe dan fungsi ini.
-#[cfg_attr(not(debug_assertions), allow(dead_code))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Toast {
@@ -28,6 +25,8 @@ pub struct Toast {
 }
 
 /// Isi toast; bentuknya sama dengan `ToastPayload` di `app/ui/src/windows/toast/types.ts`.
+// Produsen saran dan izin (trigger engine, policy gate) baru ada di Fase 2; sampai itu varian
+// selain `Success` hanya dipakai submenu uji di build debug.
 #[cfg_attr(not(debug_assertions), allow(dead_code))]
 #[derive(Clone, Serialize)]
 #[serde(
@@ -59,7 +58,6 @@ pub enum ToastContent {
 
 /// Menampilkan toast. Jendela langsung ditampilkan (tanpa diaktifkan) dengan tinggi sementara
 /// agar `WebView2` tetap merender, lalu frontend menyesuaikan tingginya lewat [`toast_layout`].
-#[cfg_attr(not(debug_assertions), allow(dead_code))]
 pub fn show(app: &AppHandle, toast: &Toast) -> tauri::Result<()> {
     let Some(window) = app.get_webview_window(LABEL) else {
         return Ok(());
