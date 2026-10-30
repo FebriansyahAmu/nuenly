@@ -24,6 +24,41 @@ start = "2023-02-05"
 end = "2027-10-29"
 notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
 
+[[trusted.num]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2020-01-10"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-bigint]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-09-04"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-complex]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-06-10"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-integer]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-20"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-iter]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-20"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
 [[trusted.proc-macro2]]
 criteria = "safe-to-deploy"
 user-id = 3618 # David Tolnay (dtolnay)
@@ -58,6 +93,13 @@ user-id = 3618 # David Tolnay (dtolnay)
 start = "2019-10-09"
 end = "2027-10-29"
 notes = "Penerbit crate dasar ekosistem Rust (syn, serde, thiserror, anyhow); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.tokio-macros]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2020-10-26"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; dipercaya Mozilla dan Bytecode Alliance yang auditnya kita impor."
 
 [[trusted.unicode-ident]]
 criteria = "safe-to-deploy"

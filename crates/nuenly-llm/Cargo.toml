@@ -1,0 +1,24 @@
+[package]
+name = "nuenly-llm"
+description = "Penyedia model bahasa untuk Nuenly: LlmProvider, OllamaProvider, dan validasi output JSON schema."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes.workspace = true
+jsonschema.workspace = true
+nuenly-core.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

@@ -4,7 +4,6 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::config::{Config, ConfigStore};
-use crate::ollama;
 
 /// Pintasan Tanya Nuenly. Tetap sampai hotkey bisa diubah (F-03).
 const HOTKEY: &str = "Ctrl+Space";
@@ -26,7 +25,7 @@ fn view(config: &Config) -> SettingsView {
     SettingsView {
         model: config.model.clone(),
         hotkey: HOTKEY,
-        ollama_address: ollama::ADDRESS.to_string(),
+        ollama_address: nuenly_llm::ollama::DEFAULT_ADDRESS.to_string(),
         blocked_apps: nuenly_core::ALWAYS_BLOCKED,
     }
 }
