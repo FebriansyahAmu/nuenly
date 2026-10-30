@@ -3,6 +3,8 @@ export interface AskContext {
   source: 'selection' | 'field';
   /** Nama aplikasi untuk pengguna, misalnya "Mail". */
   appName: string;
+  /** Cuplikan satu baris (≤ 200 karakter) bila mode mengizinkan; `null` di mode lain. */
+  preview: string | null;
 }
 
 /** Alasan teks terpilih tidak dipakai; sama dengan `Notice` di `app/src/ask.rs`. */

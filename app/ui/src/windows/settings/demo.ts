@@ -43,13 +43,14 @@ function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
 
 /**
  * `?halaman=general|model|privacy|connector` (bawaannya model, seperti desain 07),
- * `?ollama=running|kosong|installed|missing`, `?otomatis`, `?jeda`, dan `?pintasan=taken|failed`.
+ * `?ollama=running|kosong|installed|missing`, `?otomatis`, `?jeda`, `?pintasan=taken|failed`,
+ * dan `?tombol=<pintasan>` (misalnya `Alt+Space`).
  */
 export function demoSettings(params: URLSearchParams): SettingsState {
   const hotkeyStatus = params.get('pintasan');
   let settings: SettingsView = {
     model: params.has('otomatis') ? null : 'gemma4:e4b',
-    hotkey: 'Ctrl+Space',
+    hotkey: params.get('tombol') ?? 'Ctrl+Space',
     hotkeyStatus: hotkeyStatus === 'taken' || hotkeyStatus === 'failed' ? hotkeyStatus : 'active',
     ollamaAddress: '127.0.0.1:11434',
     blockedApps: ['nuenly.exe', 'credentialuibroker.exe', 'consent.exe', 'keepass.exe', '1password.exe'],
@@ -63,6 +64,11 @@ export function demoSettings(params: URLSearchParams): SettingsState {
   const updateStatus = (change: Partial<StatusView>) => Promise.resolve((status = { ...status, ...change }));
   const backend: SettingsBackend = {
     setModel: (model) => Promise.resolve((settings = { ...settings, model })),
+    // Ctrl+Shift+K meniru kombinasi yang sudah dipakai aplikasi lain.
+    setHotkey: (shortcut) =>
+      shortcut === 'Ctrl+Shift+K'
+        ? Promise.reject('taken')
+        : Promise.resolve((settings = { ...settings, hotkey: shortcut ?? 'Ctrl+Space', hotkeyStatus: 'active' })),
     checkOllama: () => Promise.resolve(withPlan(ollama as OllamaInfo, settings.model)),
     openDownload: () => Promise.resolve(),
     setMode: (id) => updateStatus({ activeMode: id }),

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { type AskBackend, AskError, type AskRequest } from './backend';
 import { AskSession } from './session.svelte';
 
-const CONTEXT = { source: 'selection', appName: 'Mail' } as const;
+const CONTEXT = { source: 'selection', appName: 'Mail', preview: 'cuplikan sintetis' } as const;
 
 function streaming(tokens: string[], contextTruncated = false): AskBackend & { requests: AskRequest[] } {
   const requests: AskRequest[] = [];

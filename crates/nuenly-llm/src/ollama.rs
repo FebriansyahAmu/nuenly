@@ -22,6 +22,19 @@ const READ_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_LINE: usize = 1024 * 1024;
 /// Batas jawaban non-streaming: versi, daftar model, dan jawaban terstruktur.
 const MAX_BODY: usize = 4 * 1024 * 1024;
+/// Batas pesan error yang dibaca untuk dikenali jenisnya.
+const MAX_ERROR_BODY: usize = 64 * 1024;
+/// Penanda gagal memuat model di pesan error Ollama, huruf kecil. Pesannya hanya dicocokkan
+/// lalu dibuang, tidak pernah disimpan.
+const LOAD_FAILURE: &[&str] = &[
+    "out of memory",
+    "out-of-memory",
+    "more system memory",
+    "unable to load model",
+    "failed to load model",
+    "startup failed",
+    "runner process has terminated",
+];
 
 /// Model yang terdaftar di Ollama.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -204,6 +217,9 @@ impl OllamaProvider {
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(LlmError::ModelNotFound);
         }
+        if response.status().is_server_error() {
+            return Err(server_error(response).await);
+        }
         check(response)
     }
 
@@ -242,6 +258,25 @@ fn check(response: reqwest::Response) -> Result<reqwest::Response, LlmError> {
         Ok(response)
     } else {
         Err(LlmError::Status(response.status().as_u16()))
+    }
+}
+
+/// Status 5xx dari `/api/chat`. Ollama menjelaskan kegagalan memuat model (misalnya memori GPU
+/// habis) di `{"error": "..."}`; yang disimpan hanya jenisnya.
+async fn server_error(mut response: reqwest::Response) -> LlmError {
+    let status = response.status().as_u16();
+    let mut body = Zeroizing::new(Vec::new());
+    while let Ok(Some(chunk)) = response.chunk().await {
+        if body.len() + chunk.len() > MAX_ERROR_BODY {
+            break;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let message = Zeroizing::new(String::from_utf8_lossy(&body).to_lowercase());
+    if LOAD_FAILURE.iter().any(|marker| message.contains(marker)) {
+        LlmError::ModelLoad
+    } else {
+        LlmError::Status(status)
     }
 }
 
@@ -612,6 +647,31 @@ mod tests {
         ]);
         let (result, _tokens) = chat(&provider(address)).await;
         assert_eq!(result.unwrap_err(), LlmError::ModelNotFound);
+    }
+
+    #[tokio::test]
+    async fn a_model_that_does_not_fit_in_memory_is_reported() {
+        let (address, _received) = serve(vec![
+            tags(),
+            Reply {
+                status: "500 Internal Server Error",
+                chunks: vec![
+                    "{\"error\":\"llama-server startup failed: llama-server reported out-of-memory during startup: CUDA error\"}",
+                ],
+            },
+        ]);
+        let (result, _tokens) = chat(&provider(address)).await;
+        assert_eq!(result.unwrap_err(), LlmError::ModelLoad);
+
+        let (address, _received) = serve(vec![
+            tags(),
+            Reply {
+                status: "500 Internal Server Error",
+                chunks: vec!["{\"error\":\"template: sintetis rusak\"}"],
+            },
+        ]);
+        let (result, _tokens) = chat(&provider(address)).await;
+        assert_eq!(result.unwrap_err(), LlmError::Status(500));
     }
 
     #[tokio::test]

@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Pengaturan: membaca dan mengubah setelan, mode, dan jeda; memeriksa Ollama dan membuka halaman unduhannya.",
+  "description": "Pengaturan: membaca dan mengubah setelan (model, pintasan), mode, dan jeda; memeriksa Ollama dan membuka halaman unduhannya.",
   "windows": ["settings"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-settings-get",
+    "allow-settings-set-hotkey",
     "allow-settings-set-model",
     "allow-status-get",
     "allow-status-set-mode",

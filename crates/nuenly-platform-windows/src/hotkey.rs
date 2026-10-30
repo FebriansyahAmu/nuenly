@@ -6,11 +6,14 @@
 use std::io;
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
+use nuenly_core::{Key, Shortcut};
 use windows::Win32::Foundation::{ERROR_HOTKEY_ALREADY_REGISTERED, LPARAM, WPARAM};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    HOT_KEY_MODIFIERS, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey, VK_SPACE,
+    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey,
+    UnregisterHotKey, VK_F1, VK_SPACE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, MSG, PostThreadMessageW, WM_HOTKEY, WM_QUIT,
@@ -19,27 +22,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// ID hotkey di thread-nya. Setiap [`Hotkey`] punya thread sendiri, jadi ID-nya selalu sama.
 const ID: i32 = 1;
 
-/// Kombinasi tombol untuk hotkey global.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Shortcut {
-    modifiers: HOT_KEY_MODIFIERS,
-    key: u16,
-}
-
-impl Shortcut {
-    /// Ctrl+Space, pintasan bawaan Tanya Nuenly.
-    pub const CTRL_SPACE: Self = Self {
-        modifiers: MOD_CONTROL,
-        key: VK_SPACE.0,
-    };
-}
-
 /// Kegagalan mendaftarkan hotkey.
 #[derive(Debug, thiserror::Error)]
 pub enum HotkeyError {
     /// Kombinasi itu sudah didaftarkan aplikasi lain.
     #[error("kombinasi tombol sudah dipakai aplikasi lain")]
     Taken,
+    #[error("kombinasi tombol tidak didukung")]
+    Unsupported,
     #[error("hotkey tidak bisa didaftarkan: {0}")]
     Os(#[from] io::Error),
 }
@@ -58,6 +48,8 @@ impl From<windows::core::Error> for HotkeyError {
 #[derive(Debug)]
 pub struct Hotkey {
     thread_id: u32,
+    /// Terisi setelah thread hotkey melepas kombinasinya. `None` setelah [`Hotkey::release`].
+    released: Option<mpsc::Receiver<()>>,
 }
 
 impl Hotkey {
@@ -69,14 +61,16 @@ impl Hotkey {
     ///
     /// # Errors
     ///
-    /// [`HotkeyError::Taken`] bila kombinasi itu sudah dipakai aplikasi lain, atau
-    /// [`HotkeyError::Os`] bila Windows menolaknya karena alasan lain atau thread tidak bisa
-    /// dibuat.
+    /// [`HotkeyError::Taken`] bila kombinasi itu sudah dipakai aplikasi lain,
+    /// [`HotkeyError::Unsupported`] bila tombolnya tidak dikenal, atau [`HotkeyError::Os`] bila
+    /// Windows menolaknya karena alasan lain atau thread tidak bisa dibuat.
     pub fn register(
         shortcut: Shortcut,
         on_press: impl Fn() + Send + 'static,
     ) -> Result<Self, HotkeyError> {
+        let (modifiers, key) = win32(shortcut).ok_or(HotkeyError::Unsupported)?;
         let (ready, registered) = mpsc::sync_channel(1);
+        let (unregistered, released) = mpsc::sync_channel(1);
         thread::Builder::new()
             .name("nuenly-hotkey".to_owned())
             .spawn(move || {
@@ -84,14 +78,8 @@ impl Hotkey {
                 let thread_id = unsafe { GetCurrentThreadId() };
                 // SAFETY: tanpa jendela, Windows mengirim WM_HOTKEY ke antrean pesan thread ini,
                 // yang dibuat oleh panggilan ini juga.
-                let result = unsafe {
-                    RegisterHotKey(
-                        None,
-                        ID,
-                        shortcut.modifiers | MOD_NOREPEAT,
-                        u32::from(shortcut.key),
-                    )
-                };
+                let result =
+                    unsafe { RegisterHotKey(None, ID, modifiers | MOD_NOREPEAT, u32::from(key)) };
                 if let Err(err) = result {
                     let _ = ready.send(Err(HotkeyError::from(err)));
                     return;
@@ -100,11 +88,30 @@ impl Hotkey {
                 listen(&on_press);
                 // SAFETY: hotkey ini didaftarkan di thread yang sama dengan ID yang sama.
                 let _ = unsafe { UnregisterHotKey(None, ID) };
+                let _ = unregistered.send(());
             })?;
         let thread_id = registered
             .recv()
             .map_err(|_| io::Error::other("thread hotkey berhenti"))??;
-        Ok(Self { thread_id })
+        Ok(Self {
+            thread_id,
+            released: Some(released),
+        })
+    }
+
+    /// Melepas hotkey dan menunggu sampai Windows benar-benar melepasnya, paling lama
+    /// `timeout`, agar kombinasi yang sama bisa langsung didaftarkan lagi. `false` bila belum
+    /// terlepas, misalnya karena `on_press` masih berjalan.
+    #[must_use]
+    pub fn release(mut self, timeout: Duration) -> bool {
+        let released = self.released.take();
+        self.quit();
+        released.is_some_and(|released| released.recv_timeout(timeout).is_ok())
+    }
+
+    fn quit(&self) {
+        // SAFETY: tanpa prasyarat; bila thread-nya sudah berhenti, panggilan ini hanya gagal.
+        let _ = unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) };
     }
 }
 
@@ -112,9 +119,34 @@ impl Drop for Hotkey {
     /// Meminta thread hotkey berhenti tanpa menunggunya, agar tidak macet bila `on_press` sedang
     /// menunggu thread yang men-drop.
     fn drop(&mut self) {
-        // SAFETY: tanpa prasyarat; bila thread-nya sudah berhenti, panggilan ini hanya gagal.
-        let _ = unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) };
+        if self.released.is_some() {
+            self.quit();
+        }
     }
+}
+
+/// Pengubah dan kode tombol virtual Windows untuk `shortcut`.
+fn win32(shortcut: Shortcut) -> Option<(HOT_KEY_MODIFIERS, u16)> {
+    let mut modifiers = HOT_KEY_MODIFIERS(0);
+    for (on, flag) in [
+        (shortcut.ctrl(), MOD_CONTROL),
+        (shortcut.alt(), MOD_ALT),
+        (shortcut.shift(), MOD_SHIFT),
+        (shortcut.win(), MOD_WIN),
+    ] {
+        if on {
+            modifiers |= flag;
+        }
+    }
+    // Kode tombol huruf dan angka sama dengan ASCII-nya; F1–F24 berurutan.
+    let key = match shortcut.key() {
+        Key::Space => VK_SPACE.0,
+        Key::Letter(letter @ b'A'..=b'Z') => u16::from(letter),
+        Key::Digit(digit @ b'0'..=b'9') => u16::from(digit),
+        Key::Function(number @ 1..=24) => VK_F1.0 + u16::from(number) - 1,
+        _ => return None,
+    };
+    Some((modifiers, key))
 }
 
 /// Loop pesan thread hotkey sampai `WM_QUIT`.
@@ -132,28 +164,35 @@ fn listen(on_press: &impl Fn()) {
 
 #[cfg(test)]
 mod tests {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL, MOD_SHIFT, VK_F24};
+    use std::time::Duration;
 
-    use super::{HOT_KEY_MODIFIERS, Hotkey, HotkeyError, Shortcut};
+    use nuenly_core::Shortcut;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        MOD_ALT, MOD_CONTROL, MOD_SHIFT, VK_F24, VK_K,
+    };
+
+    use super::{Hotkey, HotkeyError, win32};
 
     /// Kombinasi yang hampir pasti tidak dipakai siapa pun, agar test tidak mengganggu desktop.
-    const UNUSED: Shortcut = Shortcut {
-        modifiers: HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_SHIFT.0),
-        key: VK_F24.0,
-    };
+    fn unused() -> Shortcut {
+        Shortcut::parse("Ctrl+Alt+Shift+F24").unwrap()
+    }
+
+    #[test]
+    fn maps_shortcuts_to_windows_keys() {
+        let (modifiers, key) = win32(unused()).unwrap();
+        assert_eq!(modifiers, MOD_CONTROL | MOD_ALT | MOD_SHIFT);
+        assert_eq!(key, VK_F24.0);
+        assert_eq!(win32(Shortcut::parse("Alt+K").unwrap()).unwrap().1, VK_K.0);
+    }
 
     #[test]
     fn taken_shortcut_is_refused_until_released() {
-        let first = Hotkey::register(UNUSED, || {}).unwrap();
-        let err = Hotkey::register(UNUSED, || {}).unwrap_err();
+        let first = Hotkey::register(unused(), || {}).unwrap();
+        let err = Hotkey::register(unused(), || {}).unwrap_err();
         assert!(matches!(err, HotkeyError::Taken), "{err:?}");
 
-        drop(first);
-        // Thread lama melepas hotkey setelah menerima WM_QUIT; tunggu sebentar.
-        let again = (0..50).find_map(|_| {
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            Hotkey::register(UNUSED, || {}).ok()
-        });
-        assert!(again.is_some());
+        assert!(first.release(Duration::from_secs(1)));
+        assert!(Hotkey::register(unused(), || {}).is_ok());
     }
 }

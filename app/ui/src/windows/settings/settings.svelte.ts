@@ -1,7 +1,7 @@
 import type { OllamaInfo } from '$lib/ollama';
 import type { StatusView } from '$lib/status';
 
-import type { SettingsBackend, SettingsView } from './backend';
+import type { HotkeyFailure, SettingsBackend, SettingsView } from './backend';
 
 export const PAGES = [
   { id: 'general', label: 'Umum', subtitle: 'Mode dan pintasan keyboard.' },
@@ -45,8 +45,23 @@ export function formatMemory(bytes: number): string {
   return `${gbFormat.format(bytes / GB)} GB`;
 }
 
-const MODEL_ERROR = 'Pilihan model tidak bisa disimpan. Coba lagi.';
 const ACTION_ERROR = 'Perubahan tidak bisa disimpan. Coba lagi.';
+
+const HOTKEY_ERROR: Record<HotkeyFailure, string> = {
+  invalid: 'Pakai Ctrl atau Alt bersama huruf, angka, F1–F24, atau Spasi.',
+  taken: 'Kombinasi ini sudah dipakai aplikasi lain. Pintasan lama tetap dipakai.',
+  failed: 'Kombinasi ini tidak bisa dipasang. Pintasan lama tetap dipakai.',
+  notSaved: 'Pintasan sudah dipakai, tetapi tidak bisa disimpan untuk saat Nuenly dibuka lagi.',
+};
+
+/** Pesan untuk kode gagal dari `settings_set_hotkey`; selain kode yang dikenal, pesan umum. */
+export function hotkeyError(error: unknown): string {
+  return typeof error === 'string' && Object.hasOwn(HOTKEY_ERROR, error)
+    ? HOTKEY_ERROR[error as HotkeyFailure]
+    : ACTION_ERROR;
+}
+
+const MODEL_ERROR = 'Pilihan model tidak bisa disimpan. Coba lagi.';
 const DOWNLOAD_ERROR = 'Halaman unduhan tidak bisa dibuka. Buka ollama.com/download di browser.';
 
 /** Isi jendela Pengaturan: setelan, status mode/jeda, dan hasil pemeriksaan Ollama. */
@@ -57,6 +72,9 @@ export class SettingsState {
   ollama = $state<OllamaInfo | null>(null);
   checking = $state(false);
   error = $state<string | null>(null);
+  /** Alasan pintasan terakhir tidak bisa dipakai; tampil di baris pintasan. */
+  hotkeyError = $state<string | null>(null);
+  savingHotkey = $state(false);
 
   #backend: SettingsBackend;
   /** Naik setiap pemeriksaan baru; hasil pemeriksaan lama diabaikan. */
@@ -107,6 +125,19 @@ export class SettingsState {
     }, MODEL_ERROR);
     if (saved) {
       await this.checkOllama();
+    }
+  }
+
+  /** `null` kembali ke Ctrl+Space. Bila gagal, pintasan lama tetap dipakai dan alasannya tersimpan. */
+  async setHotkey(shortcut: string | null): Promise<void> {
+    this.hotkeyError = null;
+    this.savingHotkey = true;
+    try {
+      this.settings = await this.#backend.setHotkey(shortcut);
+    } catch (error) {
+      this.hotkeyError = hotkeyError(error);
+    } finally {
+      this.savingHotkey = false;
     }
   }
 

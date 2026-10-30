@@ -122,11 +122,14 @@ pub struct ActivePolicy {
     pub egress: Egress,
     pub redaction: RedactionLevel,
     pub proactive: ProactivePolicy,
+    /// Cuplikan teks konteks boleh ditampilkan di jendela Nuenly, misalnya di Tanya Nuenly.
+    pub context_preview: bool,
 }
 
 impl ActivePolicy {
     /// Kebijakan dengan nilai bawaan yang aman: hanya model lokal, redaksi standar,
-    /// dan semua aplikasi boleh dibaca kecuali [`ALWAYS_BLOCKED`].
+    /// semua aplikasi boleh dibaca kecuali [`ALWAYS_BLOCKED`], dan teks konteks tidak
+    /// ditampilkan.
     #[must_use]
     pub fn new(mode: ModeId) -> Self {
         Self {
@@ -135,6 +138,7 @@ impl ActivePolicy {
             egress: Egress::default(),
             redaction: RedactionLevel::default(),
             proactive: ProactivePolicy::default(),
+            context_preview: false,
         }
     }
 
@@ -230,5 +234,6 @@ mod tests {
         assert_eq!(policy.apps, AppFilter::default());
         assert_eq!(policy.proactive.max_per_hour, 6);
         assert_eq!(policy.proactive.toast_timeout, Duration::from_secs(8));
+        assert!(!policy.context_preview);
     }
 }

@@ -120,19 +120,30 @@
 
     <div class="flex flex-col gap-3 p-4">
       {#if session.context}
-        <div class="flex items-center gap-2 text-sm">
-          <span class="text-muted-foreground">Dari:</span>
-          <Badge variant="secondary" class="h-6 gap-1.5 rounded-md px-2 text-sm font-normal">
-            {SOURCE_LABEL[session.context.source]} di {session.context.appName}
-            <button
-              type="button"
-              class="rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-              aria-label="Jangan pakai {SOURCE_LABEL[session.context.source].toLowerCase()} sebagai konteks"
-              onclick={() => session.clearContext()}
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-muted-foreground">Dari:</span>
+            <Badge variant="secondary" class="h-6 gap-1.5 rounded-md px-2 text-sm font-normal">
+              {SOURCE_LABEL[session.context.source]} di {session.context.appName}
+              <button
+                type="button"
+                class="rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label="Jangan pakai {SOURCE_LABEL[session.context.source].toLowerCase()} sebagai konteks"
+                onclick={() => session.clearContext()}
+              >
+                <X class="size-3.5" />
+              </button>
+            </Badge>
+          </div>
+          <!-- Cuplikan hanya dikirim Rust bila kebijakan mode mengizinkan (mode Umum). -->
+          {#if session.context.preview}
+            <p
+              class="line-clamp-2 rounded-md bg-muted px-3 py-2 text-[13px] leading-snug text-muted-foreground"
+              aria-label="Cuplikan {SOURCE_LABEL[session.context.source].toLowerCase()}"
             >
-              <X class="size-3.5" />
-            </button>
-          </Badge>
+              {session.context.preview}
+            </p>
+          {/if}
         </div>
       {:else if session.notice}
         <p class="flex items-center gap-2 text-sm text-muted-foreground">

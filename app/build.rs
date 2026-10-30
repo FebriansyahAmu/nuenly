@@ -11,6 +11,7 @@ fn main() {
         "onboarding_finish",
         "open_settings",
         "settings_get",
+        "settings_set_hotkey",
         "settings_set_model",
         "status_get",
         "status_pause",

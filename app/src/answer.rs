@@ -64,6 +64,8 @@ pub enum AskFailure {
     /// Model pilihan pengguna tidak ada di Ollama.
     ModelMissing,
     ModelTooLarge,
+    /// Ollama gagal memuat model, biasanya karena memori GPU atau RAM sedang tidak cukup.
+    ModelLoad,
     TooLong,
     Timeout,
     /// Jendela ditutup atau sesi baru dibuka sebelum jawaban selesai.
@@ -77,6 +79,7 @@ impl From<LlmError> for AskFailure {
             LlmError::Unreachable => Self::OllamaNotRunning,
             LlmError::Timeout => Self::Timeout,
             LlmError::ModelNotFound | LlmError::RemoteModel => Self::ModelMissing,
+            LlmError::ModelLoad => Self::ModelLoad,
             _ => Self::Failed,
         }
     }
@@ -390,6 +393,7 @@ mod tests {
             AskFailure::from(LlmError::RemoteModel),
             AskFailure::ModelMissing
         );
+        assert_eq!(AskFailure::from(LlmError::ModelLoad), AskFailure::ModelLoad);
         assert_eq!(AskFailure::from(LlmError::Status(500)), AskFailure::Failed);
         assert_eq!(
             serde_json::to_value(AskFailure::OllamaNotRunning).unwrap(),
