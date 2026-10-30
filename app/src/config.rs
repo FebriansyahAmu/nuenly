@@ -14,6 +14,8 @@ pub const FILE_NAME: &str = "config.json";
 pub struct Config {
     /// Versi pemberitahuan privasi yang disetujui di onboarding; 0 berarti belum pernah.
     pub privacy_accepted: u32,
+    /// Model Ollama pilihan pengguna; `None` berarti dipilih otomatis sesuai kemampuan PC.
+    pub model: Option<String>,
 }
 
 /// State terkelola Tauri: setelan di memori beserta lokasinya di disk.

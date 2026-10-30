@@ -13,6 +13,7 @@
 
   import NuenlyMark from '$lib/components/nuenly-mark.svelte';
   import { Button } from '$lib/components/ui/button';
+  import { LOCAL_ONLY, NEVER, READS } from '$lib/privacy';
   import { cn } from '$lib/utils';
 
   import { type OnboardingFlow, STEPS, type Step } from './flow.svelte';
@@ -33,9 +34,6 @@
       subtitle: 'Nuenly memakai Ollama untuk menjalankan model AI di PC ini.',
     },
   };
-
-  const READS = ['Membaca field yang sedang Anda isi', 'Membaca teks yang Anda pilih saat memanggil Nuenly'];
-  const NEVER = ['Tidak merekam layar atau ketikan', 'Tidak membaca password, perbankan, atau jendela privat'];
 
   const heading = $derived(HEADINGS[flow.step]);
   let title = $state<HTMLHeadingElement | null>(null);
@@ -127,7 +125,7 @@
       </ul>
       <p class="mt-6 flex items-center gap-2.5 rounded-lg bg-muted px-3 py-3">
         <Lock class="size-[18px] shrink-0" aria-hidden="true" />
-        Semua diproses di PC ini. Tidak ada yang dikirim ke internet.
+        {LOCAL_ONLY}
       </p>
     {:else}
       <p role="status" class="mt-6 flex items-center gap-2.5 rounded-lg bg-muted px-3 py-3">

@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 
-/** Bentuknya sama dengan `OllamaStatus` di `app/src/ollama.rs`. */
-export type OllamaStatus = 'running' | 'installed' | 'missing';
+import type { OllamaInfo, OllamaStatus } from '$lib/ollama';
+
+export type { OllamaStatus };
 
 /** Aksi onboarding ke Rust; dipisah agar mode demo di browser bisa menggantinya. */
 export interface OnboardingBackend {
@@ -15,7 +16,7 @@ export interface OnboardingBackend {
 
 export const tauriBackend: OnboardingBackend = {
   accept: () => invoke('onboarding_accept'),
-  checkOllama: () => invoke('onboarding_ollama'),
-  openDownload: () => invoke('onboarding_open_download'),
+  checkOllama: async () => (await invoke<OllamaInfo>('ollama_status')).status,
+  openDownload: () => invoke('ollama_open_download'),
   finish: () => invoke('onboarding_finish'),
 };

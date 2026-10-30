@@ -3,15 +3,15 @@
   import Pause from '@lucide/svelte/icons/pause';
   import Play from '@lucide/svelte/icons/play';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
 
+  import ModeSwitch from '$lib/components/mode-switch.svelte';
   import NuenlyMark from '$lib/components/nuenly-mark.svelte';
   import { Button } from '$lib/components/ui/button';
   import { applyAccent, type StatusView } from '$lib/status';
   import { cn } from '$lib/utils';
 
   import type { TrayBackend } from './backend';
-  import { nextIndex } from './mode-switch';
 
   let {
     backend,
@@ -27,10 +27,8 @@
   let latest = $state<StatusView | null>(null);
   const current = $derived(latest ?? initial);
   const paused = $derived(current.pausedUntilMs !== null);
-  const activeIndex = $derived(current.modes.findIndex((mode) => mode.id === current.activeMode));
 
   const timeFormat = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' });
-  let radios = $state<HTMLButtonElement[]>([]);
 
   onMount(() => {
     applyAccent(initial);
@@ -42,18 +40,6 @@
     const next = await action();
     applyAccent(next);
     latest = next;
-  }
-
-  async function onRadioKeydown(event: KeyboardEvent) {
-    const index = nextIndex(activeIndex, event.key, current.modes.length);
-    const mode = index === null ? undefined : current.modes[index];
-    if (index === null || !mode) {
-      return;
-    }
-    event.preventDefault();
-    await run(() => backend.setMode(mode.id));
-    await tick();
-    radios[index]?.focus();
   }
 
   function onKeydown(event: KeyboardEvent) {
@@ -88,35 +74,12 @@
       ></span>
     </header>
 
-    <div
-      role="radiogroup"
-      aria-label="Mode"
-      class="mt-5 grid rounded-lg bg-muted p-[3px]"
-      style:grid-template-columns="repeat({current.modes.length}, minmax(0, 1fr))"
-    >
-      {#each current.modes as mode, index (mode.id)}
-        {@const checked = mode.id === current.activeMode}
-        <button
-          bind:this={radios[index]}
-          type="button"
-          role="radio"
-          aria-checked={checked}
-          tabindex={checked ? 0 : -1}
-          class={cn(
-            'flex h-7 items-center justify-center gap-2 rounded-md text-[15px] transition-colors',
-            'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-            checked ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-          )}
-          onclick={() => run(() => backend.setMode(mode.id))}
-          onkeydown={onRadioKeydown}
-        >
-          {#if checked}
-            <span class="size-2 rounded-full" style:background-color={mode.accent} aria-hidden="true"></span>
-          {/if}
-          {mode.label}
-        </button>
-      {/each}
-    </div>
+    <ModeSwitch
+      class="mt-5"
+      modes={current.modes}
+      active={current.activeMode}
+      onselect={(id) => run(() => backend.setMode(id))}
+    />
 
     <p class="mt-3.5 text-[13px] leading-snug text-muted-foreground">
       Mode berganti otomatis sesuai aplikasi yang Anda buka.
