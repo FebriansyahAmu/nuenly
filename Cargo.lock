@@ -1992,6 +1992,7 @@ name = "nuenly"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nuenly-context",
  "nuenly-core",
  "nuenly-llm",
  "nuenly-platform-windows",
@@ -2000,6 +2001,10 @@ dependencies = [
  "tauri",
  "tauri-build",
 ]
+
+[[package]]
+name = "nuenly-context"
+version = "0.1.0"
 
 [[package]]
 name = "nuenly-core"

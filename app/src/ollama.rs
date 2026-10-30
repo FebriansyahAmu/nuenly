@@ -1,12 +1,18 @@
 //! Pemeriksaan Ollama untuk onboarding (F-26) dan Pengaturan › Model AI (F-27): apakah Ollama
-//! berjalan di PC ini, versinya, dan model yang sudah diunduh.
+//! berjalan di PC ini, versinya, model yang sudah diunduh, dan rencana `ResourceProfiler`
+//! (F-13) untuk model yang dipakai.
 
 use std::ffi::OsStr;
 use std::path::Path;
 
+use nuenly_context::{Candidate, ModelPlan, Placement};
 use nuenly_llm::OllamaProvider;
+use nuenly_llm::ollama::OllamaModel;
 use serde::Serialize;
 use tauri::State;
+
+use crate::config::ConfigStore;
+use crate::hardware::{HardwareInfo, HardwareState};
 
 const EXE: &str = if cfg!(windows) {
     "ollama.exe"
@@ -36,26 +42,73 @@ pub struct OllamaInfo {
     /// Nama model yang berjalan di PC ini, urut abjad; model cloud tidak termasuk. Kosong bila
     /// Ollama tidak berjalan.
     pub models: Vec<String>,
+    /// Rencana untuk model pilihan pengguna, atau pilihan otomatis. `None` bila belum ada model
+    /// yang cocok.
+    pub plan: Option<PlanView>,
+    pub hardware: HardwareInfo,
 }
 
-pub async fn detect(provider: &OllamaProvider) -> OllamaInfo {
+/// Bentuknya sama dengan `PlanView` di `app/ui/src/lib/ollama.ts`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanView {
+    pub model: String,
+    /// Dipilih `ResourceProfiler` karena pengguna memilih "Otomatis".
+    pub automatic: bool,
+    pub placement: &'static str,
+    pub num_ctx: u32,
+    pub keep_alive_secs: u64,
+    pub kv_q8_recommended: bool,
+}
+
+impl PlanView {
+    fn new(plan: ModelPlan, automatic: bool) -> Self {
+        Self {
+            placement: match plan.placement {
+                Placement::Gpu => "gpu",
+                Placement::Split => "split",
+                Placement::Cpu => "cpu",
+                Placement::TooLarge => "tooLarge",
+            },
+            model: plan.model,
+            automatic,
+            num_ctx: plan.num_ctx.get(),
+            keep_alive_secs: plan.keep_alive.as_secs(),
+            kv_q8_recommended: plan.kv_q8_recommended,
+        }
+    }
+}
+
+/// Memeriksa Ollama, lalu merencanakan `preferred` (`None` = otomatis) untuk PC ini.
+pub async fn detect(
+    provider: &OllamaProvider,
+    hardware: HardwareInfo,
+    preferred: Option<&str>,
+) -> OllamaInfo {
     if let Ok(version) = provider.version().await {
         // Model cloud meneruskan teks ke luar PC, jadi tidak ditawarkan (dan ditolak provider).
-        let models = provider
+        let local: Vec<OllamaModel> = provider
             .models()
             .await
-            .map(|models| {
-                models
-                    .into_iter()
-                    .filter(|model| !model.remote)
-                    .map(|model| model.name)
-                    .collect()
-            })
+            .map(|models| models.into_iter().filter(|model| !model.remote).collect())
             .unwrap_or_default();
+        let candidates: Vec<Candidate<'_>> = local
+            .iter()
+            .map(|model| Candidate {
+                name: &model.name,
+                size: model.size,
+            })
+            .collect();
+        let plan = hardware
+            .profiler()
+            .plan(&candidates, preferred)
+            .map(|plan| PlanView::new(plan, preferred.is_none()));
         return OllamaInfo {
             status: OllamaStatus::Running,
             version: Some(version),
-            models,
+            models: local.into_iter().map(|model| model.name).collect(),
+            plan,
+            hardware,
         };
     }
     let installed = tauri::async_runtime::spawn_blocking(|| {
@@ -72,14 +125,21 @@ pub async fn detect(provider: &OllamaProvider) -> OllamaInfo {
         } else {
             OllamaStatus::Missing
         },
+        hardware,
         ..OllamaInfo::default()
     }
 }
 
 /// Selalu berhasil; `Result` hanya karena command async yang memakai `State` wajib mengembalikannya.
 #[tauri::command]
-pub async fn ollama_status(provider: State<'_, OllamaProvider>) -> Result<OllamaInfo, String> {
-    Ok(detect(&provider).await)
+pub async fn ollama_status(
+    provider: State<'_, OllamaProvider>,
+    hardware: State<'_, HardwareState>,
+    store: State<'_, ConfigStore>,
+) -> Result<OllamaInfo, String> {
+    let preferred = store.get().model;
+    let hardware = hardware.get().await;
+    Ok(detect(&provider, hardware, preferred.as_deref()).await)
 }
 
 /// Membuka halaman unduhan Ollama. Tautannya tetap; frontend tidak bisa memilih alamat lain.
@@ -115,7 +175,22 @@ fn installed(local_app_data: Option<&OsStr>, path: Option<&OsStr>) -> bool {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{EXE, installed};
+    use super::{EXE, OllamaStatus, detect, installed};
+
+    // Ollama dan GPU sungguhan di PC pengembang; tidak memuat model.
+    // Jalankan manual: cargo test -p nuenly --bin nuenly plans_for_this_pc -- --ignored --nocapture
+    #[test]
+    #[ignore = "butuh Ollama yang berjalan"]
+    fn plans_for_this_pc() {
+        let provider = nuenly_llm::OllamaProvider::new().unwrap();
+        let hardware = crate::hardware::detect();
+        for preferred in [None, Some("gemma4:e4b")] {
+            let info =
+                tauri::async_runtime::block_on(detect(&provider, hardware.clone(), preferred));
+            assert_eq!(info.status, OllamaStatus::Running);
+            println!("{preferred:?}: {:#?}\n{:#?}", info.hardware, info.plan);
+        }
+    }
 
     #[test]
     fn finds_ollama_in_the_default_location_or_on_path() {
