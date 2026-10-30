@@ -2,13 +2,20 @@
 
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::onboarding;
+
 pub const LABEL: &str = "ask";
 
-/// Membuka Tanya Nuenly di monitor tempat kursor berada dan memulai sesi baru.
+/// Membuka Tanya Nuenly di monitor tempat kursor berada dan memulai sesi baru. Sebelum
+/// persetujuan privasi, yang dibuka adalah onboarding.
 ///
 /// Jendelanya sudah dibuat (tersembunyi) saat start, jadi membuka hanya memindahkan,
 /// memberi tahu frontend, lalu menampilkan; target PRD ≤ 150 ms.
 pub fn open(app: &AppHandle) -> tauri::Result<()> {
+    // Tanya Nuenly membaca teks terpilih, jadi menunggu "Saya mengerti" di onboarding.
+    if !onboarding::ensure_accepted(app) {
+        return Ok(());
+    }
     let Some(window) = app.get_webview_window(LABEL) else {
         return Ok(());
     };

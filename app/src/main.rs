@@ -5,6 +5,9 @@
 
 mod ask;
 mod clipboard;
+mod config;
+mod ollama;
+mod onboarding;
 mod status;
 mod toast;
 mod tray;
@@ -21,6 +24,10 @@ fn main() -> anyhow::Result<()> {
         .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![
             clipboard::clipboard_write_text,
+            onboarding::onboarding_accept,
+            onboarding::onboarding_finish,
+            onboarding::onboarding_ollama,
+            onboarding::onboarding_open_download,
             status::status_get,
             status::status_pause,
             status::status_resume,
@@ -30,7 +37,13 @@ fn main() -> anyhow::Result<()> {
             tray::open_settings,
         ])
         .setup(|app| {
+            let config = app.path().app_config_dir()?.join(config::FILE_NAME);
+            app.manage(config::ConfigStore::load(config));
             tray::create(app.handle())?;
+            // Nuenly tidak membaca apa pun sampai pemberitahuan privasi disetujui.
+            if !onboarding::accepted(app.handle()) {
+                onboarding::show(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| match event {

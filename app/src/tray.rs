@@ -12,10 +12,10 @@ use tauri::{
     Rect,
 };
 
-use crate::ask;
 use crate::status::{self, AppStatus};
 #[cfg(debug_assertions)]
 use crate::toast;
+use crate::{ask, onboarding};
 
 pub const ID: &str = "nuenly";
 /// Label jendela popup tray.
@@ -36,7 +36,8 @@ const REOPEN_GUARD: Duration = Duration::from_millis(300);
 #[derive(Default)]
 pub struct PopupState(Mutex<Option<Instant>>);
 
-/// Memasang ikon tray. Klik kiri membuka popup; klik kanan membuka menu cadangan.
+/// Memasang ikon tray. Klik kiri membuka popup, atau onboarding bila persetujuan privasi belum
+/// ada; klik kanan membuka menu cadangan.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
@@ -50,7 +51,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     menu.insert(&test_toast_menu(app)?, 2)?;
 
     let mut tray = TrayIconBuilder::with_id(ID)
-        .tooltip(status::tooltip(&app.state::<AppStatus>().view()))
+        .tooltip(status::tooltip(
+            &app.state::<AppStatus>().view(),
+            onboarding::accepted(app),
+        ))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
@@ -60,6 +64,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 rect,
                 ..
             } = event
+                && onboarding::ensure_accepted(tray.app_handle())
             {
                 let _ = toggle_popup(tray.app_handle(), rect);
             }

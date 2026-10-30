@@ -4,6 +4,10 @@ fn main() {
     let manifest = tauri_build::AppManifest::new().commands(&[
         "app_quit",
         "clipboard_write_text",
+        "onboarding_accept",
+        "onboarding_finish",
+        "onboarding_ollama",
+        "onboarding_open_download",
         "open_settings",
         "status_get",
         "status_pause",
