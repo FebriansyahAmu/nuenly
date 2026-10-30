@@ -1846,6 +1846,7 @@ name = "nuenly"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nuenly-core",
  "nuenly-platform-windows",
  "serde",
  "serde_json",

@@ -9,7 +9,7 @@
     "allow-status-get",
     "allow-onboarding-accept",
     "allow-onboarding-finish",
-    "allow-onboarding-ollama",
-    "allow-onboarding-open-download"
+    "allow-ollama-status",
+    "allow-ollama-open-download"
   ]
 }

@@ -8,6 +8,7 @@ mod clipboard;
 mod config;
 mod ollama;
 mod onboarding;
+mod settings;
 mod status;
 mod toast;
 mod tray;
@@ -24,10 +25,12 @@ fn main() -> anyhow::Result<()> {
         .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![
             clipboard::clipboard_write_text,
+            ollama::ollama_open_download,
+            ollama::ollama_status,
             onboarding::onboarding_accept,
             onboarding::onboarding_finish,
-            onboarding::onboarding_ollama,
-            onboarding::onboarding_open_download,
+            settings::settings_get,
+            settings::settings_set_model,
             status::status_get,
             status::status_pause,
             status::status_resume,

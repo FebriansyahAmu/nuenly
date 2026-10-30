@@ -4,7 +4,6 @@
 use tauri::{AppHandle, Manager, State};
 
 use crate::config::ConfigStore;
-use crate::ollama::{self, OllamaStatus};
 use crate::status::{self, AppStatus};
 use crate::toast::{self, Toast, ToastContent};
 
@@ -13,8 +12,6 @@ pub const LABEL: &str = "onboarding";
 /// Versi pemberitahuan privasi di langkah 2. Naikkan bila Nuenly mulai membaca hal baru, agar
 /// pengguna yang sudah setuju diminta menyetujuinya lagi.
 pub const PRIVACY_VERSION: u32 = 1;
-
-const OLLAMA_DOWNLOAD: &str = "https://ollama.com/download/windows";
 
 /// Apakah pengguna sudah menyetujui pemberitahuan privasi versi ini.
 pub fn accepted(app: &AppHandle) -> bool {
@@ -55,19 +52,6 @@ pub fn onboarding_accept(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn onboarding_ollama() -> OllamaStatus {
-    tauri::async_runtime::spawn_blocking(ollama::detect)
-        .await
-        .unwrap_or(OllamaStatus::Missing)
-}
-
-/// Membuka halaman unduhan Ollama. Tautannya tetap; frontend tidak bisa memilih alamat lain.
-#[tauri::command]
-pub fn onboarding_open_download() -> Result<(), String> {
-    open_https(OLLAMA_DOWNLOAD).map_err(|_| "Halaman unduhan tidak bisa dibuka.".to_owned())
-}
-
 /// Menutup onboarding, lalu memberi tahu bahwa Nuenly kini berjalan di tray.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri menyuntikkan handle sebagai nilai.
@@ -88,16 +72,4 @@ pub fn onboarding_finish(app: AppHandle) -> tauri::Result<()> {
             },
         },
     )
-}
-
-#[cfg(windows)]
-fn open_https(url: &str) -> std::io::Result<()> {
-    nuenly_platform_windows::shell::open_https(url)
-}
-
-#[cfg(not(windows))]
-fn open_https(_url: &str) -> std::io::Result<()> {
-    Err(std::io::Error::other(
-        "membuka tautan belum didukung di OS ini",
-    ))
 }
