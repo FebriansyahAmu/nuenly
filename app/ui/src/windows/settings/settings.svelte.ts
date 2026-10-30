@@ -37,6 +37,14 @@ export function modelOptions(ollama: OllamaInfo | null, model: string | null): s
   return model === null || models.includes(model) ? models : [model, ...models];
 }
 
+const GB = 1024 ** 3;
+const gbFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 });
+
+/** Ukuran memori untuk dibaca orang, misalnya "7,7 GB". */
+export function formatMemory(bytes: number): string {
+  return `${gbFormat.format(bytes / GB)} GB`;
+}
+
 const MODEL_ERROR = 'Pilihan model tidak bisa disimpan. Coba lagi.';
 const ACTION_ERROR = 'Perubahan tidak bisa disimpan. Coba lagi.';
 const DOWNLOAD_ERROR = 'Halaman unduhan tidak bisa dibuka. Buka ollama.com/download di browser.';
@@ -76,7 +84,13 @@ export class SettingsState {
     try {
       result = await this.#backend.checkOllama();
     } catch {
-      result = { status: 'missing', version: null, models: [] };
+      result = {
+        status: 'missing',
+        version: null,
+        models: [],
+        plan: null,
+        hardware: this.ollama?.hardware ?? { ramBytes: 0, vramBytes: 0, gpu: null },
+      };
     }
     if (check === this.#check) {
       this.ollama = result;
@@ -84,9 +98,16 @@ export class SettingsState {
     }
   }
 
-  /** `null` kembali ke pilihan otomatis. */
+  /** `null` kembali ke pilihan otomatis. Rencana model dihitung ulang setelah tersimpan. */
   async chooseModel(model: string | null): Promise<void> {
-    await this.#run(async () => (this.settings = await this.#backend.setModel(model)), MODEL_ERROR);
+    let saved = false;
+    await this.#run(async () => {
+      this.settings = await this.#backend.setModel(model);
+      saved = true;
+    }, MODEL_ERROR);
+    if (saved) {
+      await this.checkOllama();
+    }
   }
 
   async setMode(id: string): Promise<void> {

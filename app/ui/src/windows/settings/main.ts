@@ -15,7 +15,12 @@ const target = document.getElementById('app');
 if (target && import.meta.env.DEV && !isTauri()) {
   // Di browser saat `pnpm dev`: lihat `demo.ts` untuk parameter URL.
   const { demoSettings } = await import('./demo');
-  mount(App, { target, props: { state: demoSettings(new URLSearchParams(location.search)) } });
+  const params = new URLSearchParams(location.search);
+  mount(App, { target, props: { state: demoSettings(params) } });
+  if (params.has('lanjutan')) {
+    // Membuka "Pengaturan lanjutan" untuk pengecekan tampilan.
+    setTimeout(() => document.querySelectorAll('details').forEach((details) => (details.open = true)));
+  }
 } else if (target) {
   const [settings, status] = await Promise.all([
     invoke<SettingsView>('settings_get'),

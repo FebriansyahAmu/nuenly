@@ -6,6 +6,7 @@
 mod ask;
 mod clipboard;
 mod config;
+mod hardware;
 mod ollama;
 mod onboarding;
 mod settings;
@@ -21,6 +22,7 @@ fn main() -> anyhow::Result<()> {
     nuenly_platform_windows::harden_dll_search().context("gagal membatasi pencarian DLL")?;
 
     tauri::Builder::default()
+        .manage(hardware::HardwareState::default())
         .manage(status::AppStatus::default())
         .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![

@@ -1,6 +1,7 @@
 <script lang="ts">
   import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
   import ExternalLink from '@lucide/svelte/icons/external-link';
+  import Gauge from '@lucide/svelte/icons/gauge';
   import Lock from '@lucide/svelte/icons/lock';
 
   import { Badge } from '$lib/components/ui/badge';
@@ -8,8 +9,10 @@
   import * as Card from '$lib/components/ui/card';
   import { cn } from '$lib/utils';
 
+  import type { Placement } from '$lib/ollama';
+
   import Advanced from './Advanced.svelte';
-  import type { ModelState, SettingsState } from './settings.svelte';
+  import { formatMemory, type ModelState, type SettingsState } from './settings.svelte';
 
   let { state }: { state: SettingsState } = $props();
 
@@ -27,8 +30,19 @@
     { title: 'Claude API', description: 'Pakai kunci API sendiri · tidak dipakai di Medical' },
   ];
 
+  const PLACEMENT: Record<Placement, string> = {
+    gpu: 'Seluruhnya di GPU',
+    split: 'Sebagian di GPU, sisanya di prosesor',
+    cpu: 'Di prosesor',
+    tooLarge: 'Melebihi memori PC',
+  };
+
   const ready = $derived(state.modelState === 'ready');
   const waiting = $derived(state.modelState === 'checking');
+  const plan = $derived(state.ollama?.plan ?? null);
+  const hardware = $derived(state.ollama?.hardware ?? null);
+  /** Model yang dipilih otomatis, untuk ditampilkan di samping "Otomatis". */
+  const automaticModel = $derived(plan?.automatic ? plan.model : null);
 
   async function onModelChange(event: Event & { currentTarget: HTMLSelectElement }) {
     const select = event.currentTarget;
@@ -65,7 +79,7 @@
         value={state.settings.model ?? ''}
         onchange={onModelChange}
       >
-        <option class="text-foreground" value="">Otomatis · sesuai kemampuan PC ini</option>
+        <option class="text-foreground" value="">Otomatis · {automaticModel ?? 'sesuai kemampuan PC ini'}</option>
         {#each state.modelOptions as name (name)}
           <option class="text-foreground" value={name}>{name} · di PC ini</option>
         {/each}
@@ -76,7 +90,7 @@
       >
         {state.settings.model ?? 'Otomatis'}
         <span class="ml-1 text-muted-foreground">
-          · {state.settings.model === null ? 'sesuai kemampuan PC ini' : 'di PC ini'}
+          · {state.settings.model === null ? (automaticModel ?? 'sesuai kemampuan PC ini') : 'di PC ini'}
         </span>
       </span>
       <ChevronsUpDown
@@ -89,6 +103,24 @@
       <Lock class="size-3.5 shrink-0" aria-hidden="true" />
       Berjalan lewat Ollama di PC ini. Tidak ada data yang keluar.
     </p>
+
+    {#if ready && plan && plan.placement !== 'gpu'}
+      <p
+        class={cn(
+          'mt-2 flex items-start gap-2 text-[13px]',
+          plan.placement === 'tooLarge' ? 'text-amber-700' : 'text-muted-foreground',
+        )}
+      >
+        <Gauge class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        {#if plan.placement === 'split'}
+          Model ini lebih besar dari memori GPU, jadi sebagian berjalan di prosesor. Jawaban bisa lebih lambat.
+        {:else if plan.placement === 'cpu'}
+          Model berjalan di prosesor. Jawaban bisa lebih lambat.
+        {:else}
+          Model ini terlalu berat untuk PC ini dan bisa membuatnya lambat. Pilih model yang lebih kecil.
+        {/if}
+      </p>
+    {/if}
 
     {#if !ready && !waiting}
       <div class="mt-4 flex items-center justify-between gap-4 rounded-lg bg-muted px-3 py-2.5">
@@ -144,6 +176,35 @@
     <dd class="font-mono text-[13px]">{state.settings.ollamaAddress}</dd>
     <dt class="text-muted-foreground">Versi Ollama</dt>
     <dd>{state.ollama?.version ?? 'Tidak terdeteksi'}</dd>
+    {#if hardware && hardware.ramBytes > 0}
+      <dt class="text-muted-foreground">Memori PC</dt>
+      <dd>
+        RAM {formatMemory(hardware.ramBytes)}{#if hardware.gpu}{` · ${hardware.gpu} (${formatMemory(hardware.vramBytes)})`}{/if}
+      </dd>
+    {/if}
+    {#if plan}
+      <dt class="text-muted-foreground">Penempatan model</dt>
+      <dd>{PLACEMENT[plan.placement]}</dd>
+      <dt class="text-muted-foreground">Panjang konteks</dt>
+      <dd><code class="font-mono text-[13px]">num_ctx</code> {plan.numCtx} token</dd>
+      <dt class="text-muted-foreground">Tetap dimuat</dt>
+      <dd>
+        <code class="font-mono text-[13px]">keep_alive</code>
+        {Math.round(plan.keepAliveSecs / 60)} menit setelah dipakai
+      </dd>
+      <dt class="text-muted-foreground">Cache konteks</dt>
+      <dd>
+        {#if plan.kvQ8Recommended}
+          Hemat memori dengan menyetel
+          <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">OLLAMA_FLASH_ATTENTION=1</code>
+          dan
+          <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">OLLAMA_KV_CACHE_TYPE=q8_0</code>
+          di Ollama, lalu jalankan ulang Ollama.
+        {:else}
+          Bawaan Ollama sudah cukup.
+        {/if}
+      </dd>
+    {/if}
     <dt class="text-muted-foreground">Unduh model</dt>
     <dd>
       Jalankan <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">ollama pull &lt;nama-model&gt;</code>

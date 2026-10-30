@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { OllamaInfo } from '$lib/ollama';
+import type { OllamaInfo, OllamaStatus } from '$lib/ollama';
 import type { StatusView } from '$lib/status';
 
 import type { SettingsBackend, SettingsView } from './backend';
-import { modelOptions, modelState, SettingsState } from './settings.svelte';
+import { formatMemory, modelOptions, modelState, SettingsState } from './settings.svelte';
 
 const SETTINGS: SettingsView = {
   model: null,
@@ -17,7 +17,14 @@ const STATUS: StatusView = {
   activeMode: 'all',
   pausedUntilMs: null,
 };
-const running = (models: string[]): OllamaInfo => ({ status: 'running', version: '0.12.6', models });
+const info = (status: OllamaStatus, models: string[] = []): OllamaInfo => ({
+  status,
+  version: status === 'running' ? '0.12.6' : null,
+  models,
+  plan: null,
+  hardware: { ramBytes: 0, vramBytes: 0, gpu: null },
+});
+const running = (models: string[]) => info('running', models);
 
 function backend(overrides: Partial<SettingsBackend> = {}): SettingsBackend {
   return {
@@ -39,8 +46,8 @@ describe('modelState', () => {
 
   it('menjelaskan kenapa model belum siap', () => {
     expect(modelState(null, null)).toBe('checking');
-    expect(modelState({ status: 'missing', version: null, models: [] }, null)).toBe('not-installed');
-    expect(modelState({ status: 'installed', version: null, models: [] }, null)).toBe('not-running');
+    expect(modelState(info('missing'), null)).toBe('not-installed');
+    expect(modelState(info('installed'), null)).toBe('not-running');
     expect(modelState(running([]), null)).toBe('no-models');
     expect(modelState(running(['gemma3:4b']), 'gpt-oss:20b')).toBe('model-missing');
   });
@@ -53,14 +60,32 @@ describe('modelOptions', () => {
   });
 });
 
+describe('formatMemory', () => {
+  it('menulis ukuran dalam GB dengan koma desimal', () => {
+    expect(formatMemory(8_283_000_000)).toBe('7,7 GB');
+    expect(formatMemory(6 * 1024 ** 3)).toBe('6 GB');
+  });
+});
+
 describe('SettingsState', () => {
-  it('menyimpan pilihan model', async () => {
-    const state = new SettingsState(backend(), SETTINGS, STATUS);
+  it('menyimpan pilihan model lalu menghitung ulang rencananya', async () => {
+    let checks = 0;
+    const state = new SettingsState(
+      backend({
+        checkOllama: () => {
+          checks += 1;
+          return Promise.resolve(running(['gpt-oss:20b']));
+        },
+      }),
+      SETTINGS,
+      STATUS,
+    );
 
     await state.chooseModel('gpt-oss:20b');
 
     expect(state.settings.model).toBe('gpt-oss:20b');
     expect(state.error).toBeNull();
+    expect(checks).toBe(1);
   });
 
   it('tidak membocorkan pesan error teknis', async () => {
@@ -106,7 +131,7 @@ describe('SettingsState', () => {
     const first = state.checkOllama();
     const second = state.checkOllama();
     pending[1]?.(running(['gpt-oss:20b']));
-    pending[0]?.({ status: 'missing', version: null, models: [] });
+    pending[0]?.(info('missing'));
     await Promise.all([first, second]);
 
     expect(state.modelState).toBe('ready');

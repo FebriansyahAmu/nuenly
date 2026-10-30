@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+nuenly-context = { path = "crates/nuenly-context" }
 nuenly-core = { path = "crates/nuenly-core" }
 nuenly-llm = { path = "crates/nuenly-llm" }
 nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }

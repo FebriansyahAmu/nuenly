@@ -12,6 +12,7 @@ tauri-build.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+nuenly-context.workspace = true
 nuenly-core.workspace = true
 nuenly-llm.workspace = true
 serde.workspace = true

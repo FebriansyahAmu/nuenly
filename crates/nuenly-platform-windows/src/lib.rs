@@ -7,6 +7,7 @@
 
 pub mod clipboard;
 mod hardening;
+pub mod hardware;
 mod process;
 pub mod shell;
 pub mod uia;
