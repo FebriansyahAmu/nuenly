@@ -21,6 +21,9 @@
     field: 'Isi field',
   };
 
+  /** Sama dengan `MAX_PROMPT_CHARS` di `app/src/answer.rs`. */
+  const MAX_PROMPT = 2000;
+
   const NOTICE: Record<AskNotice, string> = {
     paused: 'Nuenly sedang dijeda, jadi teks terpilih tidak dibaca.',
     notAllowed: 'Nuenly tidak membaca aplikasi ini.',
@@ -107,6 +110,7 @@
         class="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
         placeholder="Minta Nuenly merapikan, meringkas, atau menjelaskan…"
         aria-label="Perintah untuk Nuenly"
+        maxlength={MAX_PROMPT}
         autocomplete="off"
         spellcheck="false"
       />
@@ -155,6 +159,11 @@
             {/each}
           {/if}
         </div>
+        {#if session.phase === 'done' && session.contextTruncated}
+          <p class="text-[13px] text-muted-foreground">
+            Teks terpilih terlalu panjang, jadi hanya bagian awalnya yang dipakai.
+          </p>
+        {/if}
       {/if}
 
       <div class="flex items-center gap-2 pt-1">

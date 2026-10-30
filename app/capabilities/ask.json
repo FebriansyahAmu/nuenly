@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "ask",
-  "description": "Tanya Nuenly: menerima event ask:open, menyalin jawaban, dan menyembunyikan jendelanya sendiri (Esc).",
+  "description": "Tanya Nuenly: menerima event ask:open, meminta jawaban, menyalin jawaban, dan menyembunyikan jendelanya sendiri (Esc).",
   "windows": ["ask"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-hide",
+    "allow-ask-send",
     "allow-clipboard-write-text",
     "allow-status-get"
   ]

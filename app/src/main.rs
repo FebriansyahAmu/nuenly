@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
+mod answer;
 mod ask;
 mod clipboard;
 mod config;
@@ -29,6 +30,7 @@ fn main() -> anyhow::Result<()> {
         .manage(status::AppStatus::default())
         .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![
+            answer::ask_send,
             clipboard::clipboard_write_text,
             ollama::ollama_open_download,
             ollama::ollama_status,

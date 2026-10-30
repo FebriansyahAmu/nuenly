@@ -20,18 +20,17 @@ export interface AskRequest {
   useContext: boolean;
 }
 
-/** Jalur ke model. Implementasi Tauri + Ollama menyusul di langkah 6–7 (F-10). */
+/** Sama dengan `AskReply` di `app/src/answer.rs`. */
+export interface AskReply {
+  /** Teks terpilih terlalu panjang, jadi hanya bagian awalnya yang dipakai. */
+  contextTruncated: boolean;
+}
+
+/** Jalur ke model; di aplikasi lewat `tauriBackend` di `./tauri`, di mode demo jawaban contoh. */
 export interface AskBackend {
   /** Mengirim permintaan dan memanggil `onToken` untuk setiap potongan jawaban. */
-  ask(request: AskRequest, onToken: (token: string) => void): Promise<void>;
+  ask(request: AskRequest, onToken: (token: string) => void): Promise<AskReply>;
 }
 
 /** Error yang pesannya aman dan ramah untuk ditampilkan ke pengguna. */
 export class AskError extends Error {}
-
-/** Dipakai selama Nuenly belum tersambung ke model. */
-export const unavailableBackend: AskBackend = {
-  ask() {
-    return Promise.reject(new AskError('Nuenly belum tersambung ke model AI.'));
-  },
-};

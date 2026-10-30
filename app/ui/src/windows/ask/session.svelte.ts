@@ -13,6 +13,8 @@ export class AskSession {
   answer = $state('');
   phase = $state<AskPhase>('idle');
   error = $state<string | null>(null);
+  /** Hanya bagian awal teks terpilih yang dipakai karena terlalu panjang. */
+  contextTruncated = $state(false);
 
   #backend: AskBackend;
   #lastPrompt = $state('');
@@ -40,6 +42,7 @@ export class AskSession {
     this.answer = '';
     this.phase = 'idle';
     this.error = null;
+    this.contextTruncated = false;
     this.#lastPrompt = '';
   }
 
@@ -67,16 +70,18 @@ export class AskSession {
     const run = this.#run;
     this.answer = '';
     this.error = null;
+    this.contextTruncated = false;
     this.phase = 'streaming';
 
     try {
-      await this.#backend.ask({ prompt, useContext: this.context !== null }, (token) => {
+      const reply = await this.#backend.ask({ prompt, useContext: this.context !== null }, (token) => {
         if (run === this.#run) {
           this.answer += token;
         }
       });
       if (run === this.#run) {
         this.phase = 'done';
+        this.contextTruncated = reply.contextTruncated;
       }
     } catch (err) {
       if (run === this.#run) {
