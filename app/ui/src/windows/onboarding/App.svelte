@@ -110,15 +110,16 @@
       </ul>
     {:else if flow.step === 'privacy'}
       <ul class="mt-6 space-y-3">
+        <!-- Ikon sejajar baris pertama, karena butir yang panjang bisa menjadi dua baris. -->
         {#each READS as item (item)}
-          <li class="flex items-center gap-2">
-            <Check class="size-[18px] shrink-0 text-green-600" aria-hidden="true" />
+          <li class="flex items-start gap-2">
+            <Check class="mt-px size-[18px] shrink-0 text-green-600" aria-hidden="true" />
             {item}
           </li>
         {/each}
         {#each NEVER as item (item)}
-          <li class="flex items-center gap-2">
-            <X class="size-[18px] shrink-0 text-red-600" aria-hidden="true" />
+          <li class="flex items-start gap-2">
+            <X class="mt-px size-[18px] shrink-0 text-red-600" aria-hidden="true" />
             {item}
           </li>
         {/each}

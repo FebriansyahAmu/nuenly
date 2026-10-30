@@ -20,15 +20,16 @@
   <Card.Content class="gap-0">
     <h2 class="font-semibold">Yang dibaca Nuenly</h2>
     <ul class="mt-3 space-y-2.5">
+      <!-- Ikon sejajar baris pertama, karena butir yang panjang bisa menjadi dua baris. -->
       {#each READS as item (item)}
-        <li class="flex items-center gap-2">
-          <Check class="size-4 shrink-0 text-green-600" aria-hidden="true" />
+        <li class="flex items-start gap-2">
+          <Check class="mt-0.5 size-4 shrink-0 text-green-600" aria-hidden="true" />
           {item}
         </li>
       {/each}
       {#each NEVER as item (item)}
-        <li class="flex items-center gap-2">
-          <X class="size-4 shrink-0 text-red-600" aria-hidden="true" />
+        <li class="flex items-start gap-2">
+          <X class="mt-0.5 size-4 shrink-0 text-red-600" aria-hidden="true" />
           {item}
         </li>
       {/each}

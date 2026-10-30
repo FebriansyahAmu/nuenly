@@ -13,6 +13,8 @@ Setelah dijalankan, pindah ke aplikasi target sebelum hitungan mundur selesai.
 Opsi:
   --focused          Hanya elemen yang fokus: label, teks terpilih, saudara sebelumnya,
                      dan waktu baca
+  --browser          Periksa halaman browser seperti Nuenly: jendela privat, situs
+                     perbankan, dan waktu periksa
   --delay <detik>    Jeda sebelum membaca (bawaan: 3)
   --depth <n>        Kedalaman tree maksimum (bawaan: 30)
   --max-nodes <n>    Jumlah elemen maksimum (bawaan: 3000)
@@ -34,6 +36,7 @@ pub enum Command {
 #[allow(clippy::struct_excessive_bools)] // Setiap bool adalah flag CLI yang berdiri sendiri.
 pub struct Args {
     pub focused: bool,
+    pub browser: bool,
     pub delay: Duration,
     pub max_depth: usize,
     pub max_nodes: usize,
@@ -45,6 +48,7 @@ impl Default for Args {
     fn default() -> Self {
         Self {
             focused: false,
+            browser: false,
             delay: Duration::from_secs(3),
             max_depth: 30,
             max_nodes: 3000,
@@ -62,6 +66,7 @@ impl Args {
             match arg.as_str() {
                 "-h" | "--help" => return Ok(Command::Help),
                 "--focused" => parsed.focused = true,
+                "--browser" => parsed.browser = true,
                 "--show-names" => parsed.show_names = true,
                 "--show-values" => parsed.show_values = true,
                 "--delay" => parsed.delay = Duration::from_secs(number(&mut args, "--delay")?),
@@ -104,6 +109,7 @@ mod tests {
     fn parses_all_flags() {
         let parsed = parse(&[
             "--focused",
+            "--browser",
             "--delay",
             "5",
             "--depth",
@@ -118,6 +124,7 @@ mod tests {
             parsed,
             Command::Run(Args {
                 focused: true,
+                browser: true,
                 delay: Duration::from_secs(5),
                 max_depth: 8,
                 max_nodes: 100,

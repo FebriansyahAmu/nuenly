@@ -3,6 +3,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::app::{AppIdentity, ForegroundWindow, WindowHandle};
+use crate::browser::{Browser, BrowserPage};
 use crate::error::ContextError;
 use crate::policy::ReadPermit;
 use crate::snapshot::{CaptureKind, ContextSnapshot, FieldInfo};
@@ -10,14 +11,31 @@ use crate::source::ContextSource;
 use crate::text::SensitiveText;
 
 /// [`ContextSource`] yang isinya ditentukan oleh test. Pakai hanya data sintetis.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FakeContextSource {
     window: Option<ForegroundWindow>,
     window_title: SensitiveText,
+    page: Result<BrowserPage, ContextError>,
     selection: Option<SensitiveText>,
     focused: Option<(FieldInfo, SensitiveText)>,
     app_after_read: Option<AppIdentity>,
+    page_reads: AtomicUsize,
     reads: AtomicUsize,
+}
+
+impl Default for FakeContextSource {
+    fn default() -> Self {
+        Self {
+            window: None,
+            window_title: SensitiveText::default(),
+            page: Ok(BrowserPage::default()),
+            selection: None,
+            focused: None,
+            app_after_read: None,
+            page_reads: AtomicUsize::new(0),
+            reads: AtomicUsize::new(0),
+        }
+    }
 }
 
 impl FakeContextSource {
@@ -35,6 +53,26 @@ impl FakeContextSource {
             app,
         });
         self.window_title = SensitiveText::new(window_title);
+        self
+    }
+
+    /// Menetapkan judul dan isi address bar bila jendelanya browser.
+    #[must_use]
+    pub fn with_browser_page(mut self, titles: &[&str], address: Option<&str>) -> Self {
+        self.page = Ok(BrowserPage {
+            titles: titles
+                .iter()
+                .map(|title| SensitiveText::new(*title))
+                .collect(),
+            address: address.map(SensitiveText::new),
+        });
+        self
+    }
+
+    /// Mensimulasikan halaman browser yang gagal diperiksa.
+    #[must_use]
+    pub fn with_browser_page_error(mut self, err: ContextError) -> Self {
+        self.page = Err(err);
         self
     }
 
@@ -64,11 +102,26 @@ impl FakeContextSource {
     pub fn read_count(&self) -> usize {
         self.reads.load(Ordering::Relaxed)
     }
+
+    /// Berapa kali halaman browser diperiksa lewat [`ContextSource::browser_page`].
+    #[must_use]
+    pub fn page_read_count(&self) -> usize {
+        self.page_reads.load(Ordering::Relaxed)
+    }
 }
 
 impl ContextSource for FakeContextSource {
     fn foreground_window(&self) -> Result<Option<ForegroundWindow>, ContextError> {
         Ok(self.window.clone())
+    }
+
+    fn browser_page(
+        &self,
+        _permit: &ReadPermit<'_>,
+        _browser: Browser,
+    ) -> Result<BrowserPage, ContextError> {
+        self.page_reads.fetch_add(1, Ordering::Relaxed);
+        self.page.clone()
     }
 
     fn read(

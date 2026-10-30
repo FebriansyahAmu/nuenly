@@ -2,7 +2,11 @@
 // Mengubah isinya berarti mengubah apa yang disetujui pengguna: naikkan juga
 // `PRIVACY_VERSION` di `app/src/onboarding.rs`.
 
-export const READS = ['Membaca field yang sedang Anda isi', 'Membaca teks yang Anda pilih saat memanggil Nuenly'];
+export const READS = [
+  'Membaca field yang sedang Anda isi',
+  'Membaca teks yang Anda pilih saat memanggil Nuenly',
+  'Memeriksa alamat dan judul jendela browser, hanya untuk melewati situs perbankan dan jendela privat',
+];
 
 export const NEVER = ['Tidak merekam layar atau ketikan', 'Tidak membaca password, perbankan, atau jendela privat'];
 

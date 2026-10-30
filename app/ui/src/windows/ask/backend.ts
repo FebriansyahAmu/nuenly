@@ -6,7 +6,7 @@ export interface AskContext {
 }
 
 /** Alasan teks terpilih tidak dipakai; sama dengan `Notice` di `app/src/ask.rs`. */
-export type AskNotice = 'paused' | 'notAllowed' | 'protectedField' | 'unreadable';
+export type AskNotice = 'paused' | 'notAllowed' | 'privateWindow' | 'banking' | 'protectedField' | 'unreadable';
 
 /** Isi event `ask:open`; sama dengan `AskOpen` di `app/src/ask.rs`. */
 export interface AskOpen {

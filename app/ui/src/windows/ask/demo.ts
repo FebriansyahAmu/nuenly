@@ -24,12 +24,12 @@ function backend(contextTruncated: boolean): AskBackend {
   };
 }
 
-const NOTICES: AskNotice[] = ['paused', 'notAllowed', 'protectedField', 'unreadable'];
+const NOTICES: AskNotice[] = ['paused', 'notAllowed', 'privateWindow', 'banking', 'protectedField', 'unreadable'];
 
 /**
  * `?jawab` langsung menjalankan perintah contoh; `?panjang` menandai teks terpilih terpotong;
- * `?kosong` membuka tanpa konteks; `?catatan=paused|notAllowed|protectedField|unreadable`
- * membuka tanpa konteks beserta alasannya.
+ * `?kosong` membuka tanpa konteks; `?catatan=<alasan>` (lihat `NOTICES`) membuka tanpa konteks
+ * beserta alasannya.
  */
 export function demoSession(params: URLSearchParams): AskSession {
   const session = new AskSession(backend(params.has('panjang')));

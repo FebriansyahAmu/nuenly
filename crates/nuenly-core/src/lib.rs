@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod browser;
 mod error;
 #[cfg(any(test, feature = "fake"))]
 mod fake;
@@ -18,6 +19,7 @@ mod source;
 mod text;
 
 pub use app::{AppIdentity, ForegroundWindow, ProcessName, WindowHandle};
+pub use browser::{Browser, BrowserPage, SensitivePage, classify};
 pub use error::{ContextError, InvalidName};
 #[cfg(any(test, feature = "fake"))]
 pub use fake::FakeContextSource;

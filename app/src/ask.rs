@@ -3,7 +3,7 @@
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use nuenly_core::{CaptureKind, CaptureOutcome, ContextError, ContextSnapshot};
+use nuenly_core::{CaptureKind, CaptureOutcome, ContextError, ContextSnapshot, SensitivePage};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
@@ -84,6 +84,10 @@ pub enum Notice {
     Paused,
     /// Filter aplikasi menolak aplikasi ini.
     NotAllowed,
+    /// Jendela privat di browser.
+    PrivateWindow,
+    /// Situs perbankan.
+    Banking,
     /// Field kata sandi.
     ProtectedField,
     /// Aplikasi tidak menjawab atau tidak mengekspos teksnya.
@@ -163,6 +167,8 @@ fn prepare(result: Result<CaptureOutcome, ContextError>) -> (Option<ContextSnaps
         // Tidak ada teks terpilih: bertanya tanpa konteks adalah hal biasa.
         Ok(CaptureOutcome::NoWindow | CaptureOutcome::Empty) => None,
         Ok(CaptureOutcome::NotAllowed(_)) => Some(Notice::NotAllowed),
+        Ok(CaptureOutcome::Sensitive(SensitivePage::PrivateWindow)) => Some(Notice::PrivateWindow),
+        Ok(CaptureOutcome::Sensitive(SensitivePage::Banking)) => Some(Notice::Banking),
         Ok(CaptureOutcome::ProtectedField) => Some(Notice::ProtectedField),
         Err(_) => Some(Notice::Unreadable),
     };
@@ -288,6 +294,24 @@ mod tests {
         let (context, open) = prepare(capture(&password, &policy(), CaptureKind::FocusedField));
         assert!(context.is_none());
         assert_eq!(open.notice, Some(Notice::ProtectedField));
+    }
+
+    #[test]
+    fn private_window_and_bank_site_are_explained() {
+        let private = FakeContextSource::new()
+            .with_foreground(app("msedge.exe", "Microsoft Edge"), "")
+            .with_browser_page(&["Tab baru - [InPrivate] - Microsoft Edge"], None)
+            .with_selection("teks sintetis");
+        assert_eq!(
+            read(&private, &policy()).notice,
+            Some(Notice::PrivateWindow)
+        );
+
+        let bank = FakeContextSource::new()
+            .with_foreground(app("chrome.exe", "Google Chrome"), "")
+            .with_browser_page(&["Masuk"], Some("ib.bri.co.id"))
+            .with_selection("teks sintetis");
+        assert_eq!(read(&bank, &policy()).notice, Some(Notice::Banking));
     }
 
     #[test]

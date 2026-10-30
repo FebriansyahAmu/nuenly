@@ -3,18 +3,23 @@
 use std::ffi::c_void;
 use std::path::Path;
 
-use nuenly_core::{AppIdentity, ContextError, ForegroundWindow, WindowHandle};
+use nuenly_core::{AppIdentity, ContextError, ForegroundWindow, SensitiveText, WindowHandle};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Storage::FileSystem::{
     GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+};
 use windows::core::HSTRING;
+use zeroize::Zeroizing;
 
 use crate::process::{name_of, process_path};
 
 /// Batas panjang nama aplikasi untuk pengguna, dalam karakter.
 const MAX_DISPLAY_NAME: usize = 64;
+/// Batas panjang judul jendela yang dibaca, dalam unit UTF-16.
+const MAX_TITLE: usize = 32_767;
 
 /// Jendela di latar depan, atau `None` bila tidak ada (misalnya desktop atau layar kunci).
 ///
@@ -48,6 +53,24 @@ pub(crate) fn foreground() -> HWND {
 
 pub(crate) fn handle(hwnd: HWND) -> WindowHandle {
     WindowHandle(hwnd.0.addr() as u64)
+}
+
+/// Judul native jendela. Teks layar, jadi hanya dipakai untuk memeriksa halaman browser.
+pub(crate) fn title(hwnd: HWND) -> SensitiveText {
+    // SAFETY: tanpa prasyarat; handle yang tidak valid hanya menghasilkan 0.
+    let len = unsafe { GetWindowTextLengthW(hwnd) };
+    let len = usize::try_from(len).unwrap_or(0).min(MAX_TITLE);
+    if len == 0 {
+        return SensitiveText::default();
+    }
+    let mut buffer = Zeroizing::new(vec![0u16; len + 1]);
+    // SAFETY: `buffer` berisi `len + 1` elemen u16 yang bisa ditulis dan hidup selama panggilan;
+    // fungsi menulis paling banyak sepanjang slice itu, termasuk nol penutup.
+    let copied = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+    let copied = usize::try_from(copied).unwrap_or(0);
+    SensitiveText::new(String::from_utf16_lossy(
+        buffer.get(..copied).unwrap_or_default(),
+    ))
 }
 
 /// ID proses pemilik jendela, atau `None` bila jendelanya tidak ada (lagi).

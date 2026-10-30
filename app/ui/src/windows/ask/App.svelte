@@ -27,6 +27,8 @@
   const NOTICE: Record<AskNotice, string> = {
     paused: 'Nuenly sedang dijeda, jadi teks terpilih tidak dibaca.',
     notAllowed: 'Nuenly tidak membaca aplikasi ini.',
+    privateWindow: 'Nuenly tidak membaca jendela privat.',
+    banking: 'Nuenly tidak membaca situs perbankan.',
     protectedField: 'Isi field kata sandi tidak dibaca.',
     unreadable: 'Teks terpilih tidak bisa dibaca dari aplikasi ini.',
   };

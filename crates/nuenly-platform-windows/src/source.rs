@@ -6,7 +6,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use nuenly_core::{
-    CaptureKind, ContextError, ContextSnapshot, ContextSource, ForegroundWindow, ReadPermit,
+    Browser, BrowserPage, CaptureKind, ContextError, ContextSnapshot, ContextSource,
+    ForegroundWindow, ReadPermit,
 };
 
 use crate::uia::Uia;
@@ -85,6 +86,15 @@ impl UiaContextSource {
 impl ContextSource for UiaContextSource {
     fn foreground_window(&self) -> Result<Option<ForegroundWindow>, ContextError> {
         window::foreground_window()
+    }
+
+    fn browser_page(
+        &self,
+        permit: &ReadPermit<'_>,
+        browser: Browser,
+    ) -> Result<BrowserPage, ContextError> {
+        let window = permit.window().clone();
+        self.run(move |uia| uia.browser_page(&window, browser))
     }
 
     fn read(
