@@ -18,6 +18,8 @@ nuenly-llm.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { workspace = true, features = ["tray-icon"] }
+# Runtime Tauri sudah tokio; dipakai untuk menghentikan jawaban yang sedang berjalan.
+tokio = { workspace = true, features = ["macros", "sync"] }
 
 [target.'cfg(windows)'.dependencies]
 nuenly-platform-windows.workspace = true

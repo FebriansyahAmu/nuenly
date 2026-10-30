@@ -1,11 +1,17 @@
 [package]
 name = "nuenly-context"
-description = "Penyusun konteks Nuenly: ResourceProfiler, dan menyusul ContextAssembler, SessionManager, ResponseCache."
+description = "Penyusun konteks Nuenly: ContextAssembler dan ResourceProfiler, menyusul SessionManager dan ResponseCache."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+# ID acak untuk tag pembungkus teks layar.
+getrandom.workspace = true
+nuenly-core.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

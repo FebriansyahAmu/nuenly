@@ -1,11 +1,12 @@
 //! Jendela Tanya Nuenly (F-22, US-1): overlay redup di layar kerja tempat kursor berada.
 //! Hotkey (F-03) membukanya dengan teks terpilih di aplikasi aktif sebagai konteks (F-02).
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use nuenly_core::{CaptureKind, CaptureOutcome, ContextError, ContextSnapshot};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::oneshot;
 
 use crate::context::ContextReader;
 use crate::onboarding;
@@ -13,14 +14,47 @@ use crate::status::AppStatus;
 
 pub const LABEL: &str = "ask";
 
-/// Konteks sesi yang sedang terbuka. Teksnya tetap di Rust; jendela hanya menerima asal dan
-/// nama aplikasinya. Dibuang saat jendela ditutup.
+/// Sesi Tanya Nuenly yang sedang terbuka. Teks konteksnya tetap di Rust; jendela hanya menerima
+/// asal dan nama aplikasinya. Menutup jendela membuang teks itu dan menghentikan jawaban.
 #[derive(Default)]
-pub struct AskState(Mutex<Option<ContextSnapshot>>);
+pub struct AskState(Mutex<Session>);
+
+#[derive(Default)]
+struct Session {
+    context: Option<ContextSnapshot>,
+    /// Jawaban yang sedang berjalan berhenti saat pengirim ini di-drop.
+    answering: Option<oneshot::Sender<()>>,
+}
 
 impl AskState {
+    fn session(&self) -> MutexGuard<'_, Session> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Sesi baru: konteks diganti dan jawaban dari sesi lama dihentikan.
     fn replace(&self, context: Option<ContextSnapshot>) {
-        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = context;
+        *self.session() = Session {
+            context,
+            answering: None,
+        };
+    }
+
+    /// Teks konteks untuk dijawab. Bila pengguna menghapus chip (`use_context` `false`),
+    /// teksnya langsung dibuang.
+    pub fn context(&self, use_context: bool) -> Option<ContextSnapshot> {
+        let mut session = self.session();
+        if !use_context {
+            session.context = None;
+        }
+        session.context.clone()
+    }
+
+    /// Memulai jawaban baru dan menghentikan jawaban sebelumnya. Hasilnya selesai saat jawaban
+    /// ini harus berhenti: jendela ditutup, sesi baru dibuka, atau jawaban lain dimulai.
+    pub fn begin_answer(&self) -> oneshot::Receiver<()> {
+        let (stop, stopped) = oneshot::channel();
+        self.session().answering = Some(stop);
+        stopped
     }
 }
 
@@ -84,7 +118,8 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     show(app, None, &AskOpen::default())
 }
 
-/// Dipanggil saat jendela disembunyikan: sesi selesai dan teks konteksnya dibuang.
+/// Dipanggil saat jendela disembunyikan: sesi selesai, teks konteksnya dibuang, dan jawaban
+/// yang masih berjalan dihentikan.
 pub fn closed(app: &AppHandle) {
     app.state::<AskState>().replace(None);
 }

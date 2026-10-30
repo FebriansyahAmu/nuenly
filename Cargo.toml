@@ -17,6 +17,7 @@ nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
 
 anyhow = "1.0.104"
 bytes = "1.12.1"
+getrandom = "0.3.4"
 # Tanpa resolusi $ref lewat HTTP atau file: schema mode pack harus mandiri (ADR 0005).
 jsonschema = { version = "0.60.2", default-features = false }
 # Hanya HTTP/1 tanpa TLS dan proxy sistem; TLS menyusul bersama adapter jarak jauh (ADR 0005).

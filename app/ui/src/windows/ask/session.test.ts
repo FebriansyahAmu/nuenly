@@ -5,7 +5,7 @@ import { AskSession } from './session.svelte';
 
 const CONTEXT = { source: 'selection', appName: 'Mail' } as const;
 
-function streaming(tokens: string[]): AskBackend & { requests: AskRequest[] } {
+function streaming(tokens: string[], contextTruncated = false): AskBackend & { requests: AskRequest[] } {
   const requests: AskRequest[] = [];
   return {
     requests,
@@ -14,6 +14,7 @@ function streaming(tokens: string[]): AskBackend & { requests: AskRequest[] } {
       for (const token of tokens) {
         onToken(token);
       }
+      return { contextTruncated };
     },
   };
 }
@@ -35,6 +36,18 @@ describe('AskSession', () => {
     expect(session.answer).toBe('Halo semua');
     expect(session.canCopy).toBe(true);
     expect(backend.requests).toEqual([{ prompt: 'Rapikan', useContext: true }]);
+  });
+
+  it('mencatat teks terpilih yang terpotong sampai permintaan berikutnya', async () => {
+    const session = new AskSession(streaming(['ok'], true));
+    session.open(CONTEXT);
+    session.prompt = 'Ringkas';
+
+    await session.submit();
+    expect(session.contextTruncated).toBe(true);
+
+    session.open(CONTEXT);
+    expect(session.contextTruncated).toBe(false);
   });
 
   it('tidak mengirim perintah kosong', async () => {
@@ -112,7 +125,7 @@ describe('AskSession', () => {
       ask: (_request, onToken) =>
         new Promise((resolve) => {
           emit = onToken;
-          finish = resolve;
+          finish = () => resolve({ contextTruncated: false });
         }),
     };
     const session = new AskSession(backend);

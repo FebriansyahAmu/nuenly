@@ -6,8 +6,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use nuenly_context::{Candidate, ModelPlan, Placement};
-use nuenly_llm::OllamaProvider;
 use nuenly_llm::ollama::OllamaModel;
+use nuenly_llm::{LlmError, OllamaProvider};
 use serde::Serialize;
 use tauri::State;
 
@@ -79,6 +79,33 @@ impl PlanView {
     }
 }
 
+/// Model yang berjalan di PC ini. Model cloud meneruskan teks ke luar PC, jadi tidak ditawarkan
+/// (dan ditolak provider).
+pub async fn local_models(provider: &OllamaProvider) -> Result<Vec<OllamaModel>, LlmError> {
+    Ok(provider
+        .models()
+        .await?
+        .into_iter()
+        .filter(|model| !model.remote)
+        .collect())
+}
+
+/// Rencana `ResourceProfiler` untuk `preferred` (`None` = otomatis) di antara `models`.
+pub fn plan(
+    hardware: &HardwareInfo,
+    models: &[OllamaModel],
+    preferred: Option<&str>,
+) -> Option<ModelPlan> {
+    let candidates: Vec<Candidate<'_>> = models
+        .iter()
+        .map(|model| Candidate {
+            name: &model.name,
+            size: model.size,
+        })
+        .collect();
+    hardware.profiler().plan(&candidates, preferred)
+}
+
 /// Memeriksa Ollama, lalu merencanakan `preferred` (`None` = otomatis) untuk PC ini.
 pub async fn detect(
     provider: &OllamaProvider,
@@ -86,23 +113,9 @@ pub async fn detect(
     preferred: Option<&str>,
 ) -> OllamaInfo {
     if let Ok(version) = provider.version().await {
-        // Model cloud meneruskan teks ke luar PC, jadi tidak ditawarkan (dan ditolak provider).
-        let local: Vec<OllamaModel> = provider
-            .models()
-            .await
-            .map(|models| models.into_iter().filter(|model| !model.remote).collect())
-            .unwrap_or_default();
-        let candidates: Vec<Candidate<'_>> = local
-            .iter()
-            .map(|model| Candidate {
-                name: &model.name,
-                size: model.size,
-            })
-            .collect();
-        let plan = hardware
-            .profiler()
-            .plan(&candidates, preferred)
-            .map(|plan| PlanView::new(plan, preferred.is_none()));
+        let local = local_models(provider).await.unwrap_or_default();
+        let plan =
+            plan(&hardware, &local, preferred).map(|plan| PlanView::new(plan, preferred.is_none()));
         return OllamaInfo {
             status: OllamaStatus::Running,
             version: Some(version),

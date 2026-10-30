@@ -12,23 +12,27 @@ Rapat koordinasi minggu depan perlu dijadwalkan ulang karena ruangan sedang digu
 
 Mohon kabari hari yang paling memungkinkan. Terima kasih.`;
 
-const backend: AskBackend = {
-  async ask(_request, onToken) {
-    for (const piece of ANSWER.match(/\S+\s*/g) ?? []) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      onToken(piece);
-    }
-  },
-};
+function backend(contextTruncated: boolean): AskBackend {
+  return {
+    async ask(_request, onToken) {
+      for (const piece of ANSWER.match(/\S+\s*/g) ?? []) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        onToken(piece);
+      }
+      return { contextTruncated };
+    },
+  };
+}
 
 const NOTICES: AskNotice[] = ['paused', 'notAllowed', 'protectedField', 'unreadable'];
 
 /**
- * `?jawab` langsung menjalankan perintah contoh; `?kosong` membuka tanpa konteks;
- * `?catatan=paused|notAllowed|protectedField|unreadable` membuka tanpa konteks beserta alasannya.
+ * `?jawab` langsung menjalankan perintah contoh; `?panjang` menandai teks terpilih terpotong;
+ * `?kosong` membuka tanpa konteks; `?catatan=paused|notAllowed|protectedField|unreadable`
+ * membuka tanpa konteks beserta alasannya.
  */
 export function demoSession(params: URLSearchParams): AskSession {
-  const session = new AskSession(backend);
+  const session = new AskSession(backend(params.has('panjang')));
   const notice = NOTICES.find((candidate) => candidate === params.get('catatan')) ?? null;
   session.open(params.has('kosong') || notice !== null ? null : CONTEXT, notice);
   session.prompt = PROMPT;

@@ -3,6 +3,7 @@ fn main() {
     // `allow-<command>` di `capabilities/`.
     let manifest = tauri_build::AppManifest::new().commands(&[
         "app_quit",
+        "ask_send",
         "clipboard_write_text",
         "ollama_open_download",
         "ollama_status",
