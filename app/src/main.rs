@@ -42,6 +42,7 @@ fn main() -> anyhow::Result<()> {
         .setup(|app| {
             let config = app.path().app_config_dir()?.join(config::FILE_NAME);
             app.manage(config::ConfigStore::load(config));
+            app.manage(nuenly_llm::OllamaProvider::new()?);
             tray::create(app.handle())?;
             // Nuenly tidak membaca apa pun sampai pemberitahuan privasi disetujui.
             if !onboarding::accepted(app.handle()) {

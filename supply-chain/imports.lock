@@ -36,6 +36,41 @@ user-id = 539
 user-login = "cuviper"
 user-name = "Josh Stone"
 
+[[publisher.num]]
+version = "0.4.3"
+when = "2024-05-08"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
+[[publisher.num-bigint]]
+version = "0.4.8"
+when = "2026-07-05"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
+[[publisher.num-complex]]
+version = "0.4.6"
+when = "2024-05-07"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
+[[publisher.num-integer]]
+version = "0.1.47"
+when = "2026-08-12"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
+[[publisher.num-iter]]
+version = "0.1.46"
+when = "2026-07-07"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
 [[publisher.proc-macro2]]
 version = "1.0.107"
 when = "2026-07-19"
@@ -98,6 +133,13 @@ when = "2026-09-23"
 user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
+
+[[publisher.tokio-macros]]
+version = "2.7.2"
+when = "2026-07-29"
+user-id = 6741
+user-login = "Darksonn"
+user-name = "Alice Ryhl"
 
 [[publisher.unicode-ident]]
 version = "1.0.27"
@@ -253,6 +295,15 @@ who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
 version = "2.0.0"
 notes = "Fork of the original `adler` crate, zero unsfae code, works in `no_std`, does what it says on th tin."
+
+[[audits.bytecode-alliance.audits.allocator-api2]]
+who = "Chris Fallin <chris@cfallin.org>"
+criteria = "safe-to-deploy"
+delta = "0.2.18 -> 0.2.20"
+notes = """
+The changes appear to be reasonable updates from Rust's stdlib imported into
+`allocator-api2`'s copy of this code.
+"""
 
 [[audits.bytecode-alliance.audits.atomic-waker]]
 who = "Alex Crichton <alex@alexcrichton.com>"
@@ -590,6 +641,13 @@ https://source.chromium.org/chromium/chromium/src/+/28841c33c77833cc30b286f9ae24
 """
 aggregated-from = "https://chromium.googlesource.com/chromium/src/+/main/third_party/rust/chromium_crates_io/supply-chain/audits.toml?format=TEXT"
 
+[[audits.google.audits.num-rational]]
+who = "Manish Goregaokar <manishearth@google.com>"
+criteria = "safe-to-deploy"
+version = "0.4.2"
+notes = "Contains no unsafe"
+aggregated-from = "https://chromium.googlesource.com/chromium/src/+/main/third_party/rust/chromium_crates_io/supply-chain/audits.toml?format=TEXT"
+
 [[audits.google.audits.proc-macro-error-attr]]
 who = "George Burgess IV <gbiv@google.com>"
 criteria = "safe-to-deploy"
@@ -812,6 +870,18 @@ aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/mai
 who = "Erich Gubler <erichdongubler@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "2.0.0 -> 2.0.1"
+aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.allocator-api2]]
+who = "Nicolas Silva <nical@fastmail.com>"
+criteria = "safe-to-deploy"
+version = "0.2.18"
+aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.allocator-api2]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "0.2.20 -> 0.2.21"
 aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.bit-set]]

@@ -11,14 +11,21 @@ publish = false
 
 [workspace.dependencies]
 nuenly-core = { path = "crates/nuenly-core" }
+nuenly-llm = { path = "crates/nuenly-llm" }
 nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
 
 anyhow = "1.0.104"
+bytes = "1.12.1"
+# Tanpa resolusi $ref lewat HTTP atau file: schema mode pack harus mandiri (ADR 0005).
+jsonschema = { version = "0.60.2", default-features = false }
+# Hanya HTTP/1 tanpa TLS dan proxy sistem; TLS menyusul bersama adapter jarak jauh (ADR 0005).
+reqwest = { version = "0.13.5", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tauri = "2.12.5"
 tauri-build = "2.7.4"
 thiserror = "2.0.21"
+tokio = "1.54.1"
 # `input` wajib karena uiautomation 0.25.1 tidak terkompilasi tanpanya. Aksi tulisnya
 # (klik, kirim tombol, set value) dikunci lewat disallowed-methods di clippy.toml.
 uiautomation = { version = "0.25.1", default-features = false, features = ["input", "pattern"] }

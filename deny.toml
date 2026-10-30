@@ -18,6 +18,8 @@ ignore = []
 # (termasuk copyleft per berkas seperti MPL-2.0) perlu alasan di PR.
 allow = [
     "MIT",
+    # MIT tanpa kewajiban atribusi (borrow-or-share, lewat jsonschema).
+    "MIT-0",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",

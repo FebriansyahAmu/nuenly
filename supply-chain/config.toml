@@ -16,6 +16,10 @@ url = "https://raw.githubusercontent.com/divviup/libprio-rs/main/supply-chain/au
 [imports.mozilla]
 url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
+[[exemptions.ahash]]
+version = "0.8.12"
+criteria = "safe-to-deploy"
+
 [[exemptions.aho-corasick]]
 version = "1.1.5"
 criteria = "safe-to-deploy"
@@ -56,6 +60,10 @@ criteria = "safe-to-deploy"
 version = "0.10.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.borrow-or-share]]
+version = "0.2.4"
+criteria = "safe-to-deploy"
+
 [[exemptions.brotli]]
 version = "9.1.1"
 criteria = "safe-to-deploy"
@@ -66,6 +74,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.bs58]]
 version = "0.5.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.bytecount]]
+version = "0.6.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.bytemuck]]
@@ -172,6 +184,10 @@ criteria = "safe-to-deploy"
 version = "0.24.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.data-encoding]]
+version = "2.11.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.defmt]]
 version = "1.2.0"
 criteria = "safe-to-deploy"
@@ -248,6 +264,10 @@ criteria = "safe-to-deploy"
 version = "1.0.20"
 criteria = "safe-to-deploy"
 
+[[exemptions.email_address]]
+version = "0.2.9"
+criteria = "safe-to-deploy"
+
 [[exemptions.embed-resource]]
 version = "3.0.12"
 criteria = "safe-to-deploy"
@@ -258,6 +278,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.erased-serde]]
 version = "0.4.11"
+criteria = "safe-to-deploy"
+
+[[exemptions.fancy-regex]]
+version = "0.19.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.fastrand]]
@@ -276,8 +300,16 @@ criteria = "safe-to-deploy"
 version = "1.1.10"
 criteria = "safe-to-deploy"
 
+[[exemptions.fluent-uri]]
+version = "0.4.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.foreign-types-macros]]
 version = "0.2.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.fraction]]
+version = "0.17.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.futures-channel]]
@@ -540,6 +572,19 @@ criteria = "safe-to-deploy"
 version = "0.7.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.jsonschema]]
+version = "0.60.2"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. Gerbang keamanan output model (ADR 0005); wajib diaudit beserta dependensinya sebelum rilis beta (Fase 2)."
+
+[[exemptions.jsonschema-regex]]
+version = "0.60.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.jsonschema-value]]
+version = "0.60.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.keyboard-types]]
 version = "0.8.3"
 criteria = "safe-to-deploy"
@@ -592,6 +637,10 @@ criteria = "safe-to-deploy"
 version = "0.9.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.micromap]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.mime]]
 version = "0.3.16"
 criteria = "safe-to-deploy"
@@ -622,6 +671,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.new_debug_unreachable]]
 version = "1.0.6"
+criteria = "safe-to-deploy"
+
+[[exemptions.num-cmp]]
+version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.num-conv]]
@@ -678,6 +731,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.once_cell]]
 version = "1.12.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.outref]]
+version = "0.5.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.pango]]
@@ -782,6 +839,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ref-cast-impl]]
 version = "1.0.27"
+criteria = "safe-to-deploy"
+
+[[exemptions.referencing]]
+version = "0.60.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.regex]]
@@ -934,6 +995,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.string_cache_codegen]]
 version = "0.6.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.strum]]
+version = "0.28.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.strum_macros]]
+version = "0.28.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.swift-rs]]
@@ -1102,6 +1171,10 @@ version = "0.7.9"
 criteria = "safe-to-deploy"
 notes = "Belum diaudit. Proc-macro untuk uiautomation; wajib diaudit bersama uiautomation sebelum rilis beta (Fase 2)."
 
+[[exemptions.unicode-general-category]]
+version = "1.1.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.url]]
 version = "2.5.8"
 criteria = "safe-to-deploy"
@@ -1110,12 +1183,20 @@ criteria = "safe-to-deploy"
 version = "1.29.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.uuid-simd]]
+version = "0.8.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.version-compare]]
 version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.version_check]]
 version = "0.9.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.vsimd]]
+version = "0.8.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.vswhom]]
@@ -1280,6 +1361,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.yoke-derive]]
 version = "0.8.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.zerocopy]]
+version = "0.8.63"
+criteria = "safe-to-deploy"
+
+[[exemptions.zerocopy-derive]]
+version = "0.8.63"
 criteria = "safe-to-deploy"
 
 [[exemptions.zerofrom]]
