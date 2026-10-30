@@ -60,6 +60,19 @@ describe('AskSession', () => {
     expect(backend.requests[0]?.useContext).toBe(false);
   });
 
+  it('keterangan hanya berlaku tanpa konteks dan hilang di sesi berikutnya', () => {
+    const session = new AskSession(streaming([]));
+
+    session.open(null, 'paused');
+    expect(session.notice).toBe('paused');
+
+    session.open(CONTEXT, 'unreadable');
+    expect(session.notice).toBeNull();
+
+    session.open(null);
+    expect(session.notice).toBeNull();
+  });
+
   it('menampilkan pesan AskError apa adanya', async () => {
     const session = new AskSession(failing(new AskError('Model belum siap.')));
     session.prompt = 'Halo';

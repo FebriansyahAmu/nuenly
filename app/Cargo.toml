@@ -22,5 +22,8 @@ tauri = { workspace = true, features = ["tray-icon"] }
 [target.'cfg(windows)'.dependencies]
 nuenly-platform-windows.workspace = true
 
+[dev-dependencies]
+nuenly-core = { workspace = true, features = ["fake"] }
+
 [lints]
 workspace = true

@@ -43,12 +43,14 @@ function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
 
 /**
  * `?halaman=general|model|privacy|connector` (bawaannya model, seperti desain 07),
- * `?ollama=running|kosong|installed|missing`, `?otomatis`, dan `?jeda`.
+ * `?ollama=running|kosong|installed|missing`, `?otomatis`, `?jeda`, dan `?pintasan=taken|failed`.
  */
 export function demoSettings(params: URLSearchParams): SettingsState {
+  const hotkeyStatus = params.get('pintasan');
   let settings: SettingsView = {
     model: params.has('otomatis') ? null : 'gemma4:e4b',
     hotkey: 'Ctrl+Space',
+    hotkeyStatus: hotkeyStatus === 'taken' || hotkeyStatus === 'failed' ? hotkeyStatus : 'active',
     ollamaAddress: '127.0.0.1:11434',
     blockedApps: ['nuenly.exe', 'credentialuibroker.exe', 'consent.exe', 'keepass.exe', '1password.exe'],
   };

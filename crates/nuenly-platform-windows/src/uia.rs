@@ -1,4 +1,5 @@
-//! Pembacaan tree UI Automation untuk diagnosis, dipakai `tools/uia-dump` di spike Fase 0.
+//! Pembacaan UI Automation: teks terpilih untuk [`UiaContextSource`](crate::UiaContextSource),
+//! dan tree lengkap untuk diagnosis lewat `tools/uia-dump` di spike Fase 0.
 //!
 //! Semua teks dari layar dikembalikan sebagai [`SensitiveText`]. `UIElement` dari crate
 //! `uiautomation` tidak keluar dari modul ini karena `Debug` dan `Display`-nya mencetak nama
@@ -6,13 +7,16 @@
 
 use std::time::{Duration, Instant};
 
-use nuenly_core::{ContextError, ProcessName, Rect, SensitiveText};
+use nuenly_core::{
+    CaptureKind, ContextError, ContextSnapshot, ControlKind, FieldInfo, ForegroundWindow,
+    ProcessName, Rect, SensitiveText,
+};
 use uiautomation::patterns::{UILegacyIAccessiblePattern, UITextPattern, UIValuePattern};
-use uiautomation::types::Handle;
+use uiautomation::types::{ControlType, Handle};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
-use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
 use crate::process::process_name;
+use crate::window;
 
 /// Batas panjang teks terpilih yang dibaca per rentang, dalam unit UTF-16.
 const MAX_SELECTION_LEN: i32 = 10_000;
@@ -102,8 +106,7 @@ impl Uia {
     ///
     /// [`ContextError::Platform`] bila elemen jendela atau nama prosesnya tidak bisa dibaca.
     pub fn foreground_window(&self) -> Result<Option<UiaWindow>, ContextError> {
-        // SAFETY: GetForegroundWindow tidak punya prasyarat dan hanya membaca state sistem.
-        let hwnd = unsafe { GetForegroundWindow() };
+        let hwnd = window::foreground();
         if hwnd.is_invalid() {
             return Ok(None);
         }
@@ -193,6 +196,59 @@ impl Uia {
         }))
     }
 
+    /// Membaca teks terpilih di `window`. `None` bila elemen fokus tidak mengekspos seleksi.
+    ///
+    /// Yang dibaca hanya seleksi dan sifat field-nya; isi field, label, dan judul jendela tidak.
+    /// Dari field kata sandi, teksnya tidak dibaca sama sekali.
+    ///
+    /// # Errors
+    ///
+    /// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan,
+    /// [`ContextError::Unsupported`] bila elemen fokus milik proses lain di jendela yang sama
+    /// (misalnya aplikasi UWP di dalam `ApplicationFrameHost`), atau error platform lain.
+    pub(crate) fn read_selection(
+        &self,
+        window: &ForegroundWindow,
+    ) -> Result<Option<ContextSnapshot>, ContextError> {
+        let hwnd = window::foreground();
+        if window::handle(hwnd) != window.handle {
+            return Err(ContextError::ForegroundChanged);
+        }
+        let pid = window::window_process(hwnd).ok_or(ContextError::ForegroundChanged)?;
+        let element = self
+            .automation
+            .get_focused_element()
+            .map_err(uia_error("GetFocusedElement"))?;
+        // Isi hanya dibaca dari proses yang sudah diizinkan filter aplikasi.
+        if element.get_process_id().map_err(uia_error("ProcessId"))? != pid {
+            return Err(ContextError::Unsupported);
+        }
+
+        // Bila tidak bisa dipastikan, anggap field kata sandi agar teksnya tidak dibaca.
+        let is_password = element.is_password().unwrap_or(true);
+        let text = if is_password {
+            SensitiveText::default()
+        } else {
+            match selection(&element) {
+                Some(text) => text,
+                None => return Ok(None),
+            }
+        };
+        Ok(Some(ContextSnapshot {
+            app: window.app.clone(),
+            // Judul jendela tidak dibutuhkan untuk teks terpilih, jadi tidak dibaca.
+            window_title: SensitiveText::default(),
+            kind: CaptureKind::SelectedText,
+            field: Some(FieldInfo {
+                label: None,
+                control: control_kind(&element),
+                is_password,
+                bounds: None,
+            }),
+            text,
+        }))
+    }
+
     fn children(&self, element: &UIElement) -> Result<Vec<UIElement>, ContextError> {
         let mut children = Vec::new();
         let mut next = optional(self.walker.get_first_child(element), "GetFirstChildElement")?;
@@ -265,6 +321,14 @@ fn describe(element: &UIElement) -> UiaNode {
                 height: u32::try_from(rect.get_height()).ok()?,
             })
         }),
+    }
+}
+
+fn control_kind(element: &UIElement) -> ControlKind {
+    match element.get_control_type() {
+        Ok(ControlType::Edit) => ControlKind::Edit,
+        Ok(ControlType::Document) => ControlKind::Document,
+        _ => ControlKind::Other,
     }
 }
 

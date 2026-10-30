@@ -9,6 +9,7 @@ import { formatMemory, modelOptions, modelState, SettingsState } from './setting
 const SETTINGS: SettingsView = {
   model: null,
   hotkey: 'Ctrl+Space',
+  hotkeyStatus: 'active',
   ollamaAddress: '127.0.0.1:11434',
   blockedApps: ['nuenly.exe'],
 };

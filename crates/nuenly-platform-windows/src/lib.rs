@@ -8,9 +8,13 @@
 pub mod clipboard;
 mod hardening;
 pub mod hardware;
+pub mod hotkey;
 mod process;
 pub mod shell;
+mod source;
 pub mod uia;
+mod window;
 
 pub use hardening::harden_dll_search;
 pub use process::process_name;
+pub use source::UiaContextSource;

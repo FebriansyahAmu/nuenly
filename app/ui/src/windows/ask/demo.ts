@@ -1,7 +1,7 @@
 // Mode demo untuk melihat tampilan di browser saat `pnpm dev`, tanpa Tauri dan model.
 // Hanya dimuat di build dev. Teksnya contoh rekaan dari kanvas desain 03.
 
-import type { AskBackend, AskContext } from './backend';
+import type { AskBackend, AskContext, AskNotice } from './backend';
 import { AskSession } from './session.svelte';
 
 const CONTEXT: AskContext = { source: 'selection', appName: 'Mail' };
@@ -21,10 +21,16 @@ const backend: AskBackend = {
   },
 };
 
-/** `?jawab` langsung menjalankan perintah contoh; `?kosong` membuka tanpa konteks. */
+const NOTICES: AskNotice[] = ['paused', 'notAllowed', 'protectedField', 'unreadable'];
+
+/**
+ * `?jawab` langsung menjalankan perintah contoh; `?kosong` membuka tanpa konteks;
+ * `?catatan=paused|notAllowed|protectedField|unreadable` membuka tanpa konteks beserta alasannya.
+ */
 export function demoSession(params: URLSearchParams): AskSession {
   const session = new AskSession(backend);
-  session.open(params.has('kosong') ? null : CONTEXT);
+  const notice = NOTICES.find((candidate) => candidate === params.get('catatan')) ?? null;
+  session.open(params.has('kosong') || notice !== null ? null : CONTEXT, notice);
   session.prompt = PROMPT;
   if (params.has('jawab')) {
     void session.submit();

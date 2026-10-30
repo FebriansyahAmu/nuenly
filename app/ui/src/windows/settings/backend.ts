@@ -3,11 +3,15 @@ import { invoke } from '@tauri-apps/api/core';
 import type { OllamaInfo } from '$lib/ollama';
 import type { StatusView } from '$lib/status';
 
+/** Sama dengan `HotkeyStatus` di `app/src/hotkey.rs`. */
+export type HotkeyStatus = 'active' | 'taken' | 'failed';
+
 /** Bentuknya sama dengan `SettingsView` di `app/src/settings.rs`. */
 export interface SettingsView {
   /** Model pilihan pengguna; `null` berarti dipilih otomatis sesuai kemampuan PC. */
   model: string | null;
   hotkey: string;
+  hotkeyStatus: HotkeyStatus;
   ollamaAddress: string;
   /** Aplikasi yang tidak pernah dibaca, apa pun modenya. */
   blockedApps: string[];
