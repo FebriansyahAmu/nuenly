@@ -19,6 +19,10 @@ const MAX_APP_NAME: usize = 64;
 /// Berapa kali ID tag diacak ulang bila kebetulan muncul di teks layar.
 const TAG_ATTEMPTS: usize = 4;
 
+/// Awalan nama tag pembungkus teks layar. Prompt sistem setiap mode wajib menyebutnya agar model
+/// tahu isi tag itu data, bukan perintah.
+pub const TAG_PREFIX: &str = "layar-";
+
 /// Prompt yang siap dikirim ke model.
 #[derive(Debug)]
 pub struct Prompt {
@@ -100,7 +104,7 @@ impl ContextAssembler {
 
         // Tanpa ID yang benar, teks layar tidak bisa menutup tag lebih awal lalu menyamar
         // sebagai instruksi.
-        let tag = format!("layar-{id:016x}");
+        let tag = format!("{TAG_PREFIX}{id:016x}");
         let text = snapshot.text.expose();
         if text.contains(&tag) {
             return Err(AssembleError::TagCollision);

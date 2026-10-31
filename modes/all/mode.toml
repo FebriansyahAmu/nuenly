@@ -1,0 +1,13 @@
+# Mode pack resmi nuenly-all: mode Umum untuk pekerjaan sehari-hari.
+#
+# Prompt Tanya Nuenly ada di prompts/ask.txt. Nilai kebijakan yang tidak ditulis memakai
+# bawaan yang aman: cuplikan teks tidak tampil, redaksi standar, semua aplikasi boleh dibaca
+# kecuali daftar blokir tetap Nuenly.
+
+id = "all"
+label = "Umum"
+accent = "#4F46E5"
+
+[policy]
+# Cuplikan teks terpilih tampil di jendela Tanya Nuenly.
+context_preview = true

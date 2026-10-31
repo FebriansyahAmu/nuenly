@@ -1995,6 +1995,7 @@ dependencies = [
  "nuenly-context",
  "nuenly-core",
  "nuenly-llm",
+ "nuenly-modes",
  "nuenly-platform-windows",
  "serde",
  "serde_json",
@@ -2033,6 +2034,16 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "nuenly-modes"
+version = "0.1.0"
+dependencies = [
+ "nuenly-core",
+ "serde",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
 ]
 
 [[package]]

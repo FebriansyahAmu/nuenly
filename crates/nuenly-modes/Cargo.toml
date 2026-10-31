@@ -1,0 +1,18 @@
+[package]
+name = "nuenly-modes"
+description = "Mode Nuenly: loader mode pack TOML dan ModeManager yang menyusun ActivePolicy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nuenly-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+# Manifest mode pack (mode.toml).
+toml.workspace = true
+
+[lints]
+workspace = true
