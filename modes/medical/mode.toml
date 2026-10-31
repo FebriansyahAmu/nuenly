@@ -1,0 +1,18 @@
+# Mode pack resmi nuenly-medical: mode Medical untuk aplikasi klinis.
+#
+# Untuk sementara hanya kebijakan dan prompt Tanya Nuenly yang hati-hati. Saran kelengkapan
+# dokumentasi, schema output, dan kamus label menyusul di Fase 3.
+
+id = "medical"
+label = "Medical"
+accent = "#0F766E"
+
+[policy]
+# Teks klinis tidak ditampilkan ulang di jendela Nuenly.
+context_preview = false
+# PII/PHI guard memakai level ketat (F-15).
+redaction = "strict"
+
+[policy.proactive]
+# Saran penting tetap tampil sampai ditutup pengguna.
+sticky_important = true

@@ -9,5 +9,5 @@
 mod assembler;
 mod resource;
 
-pub use assembler::{AssembleError, ContextAssembler, Prompt};
+pub use assembler::{AssembleError, ContextAssembler, Prompt, TAG_PREFIX};
 pub use resource::{Candidate, Hardware, ModelPlan, Placement, ResourceProfiler};

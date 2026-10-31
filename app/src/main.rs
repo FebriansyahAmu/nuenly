@@ -27,7 +27,6 @@ fn main() -> anyhow::Result<()> {
     tauri::Builder::default()
         .manage(ask::AskState::default())
         .manage(hardware::HardwareState::default())
-        .manage(status::AppStatus::default())
         .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![
             answer::ask_send,
@@ -48,6 +47,9 @@ fn main() -> anyhow::Result<()> {
             tray::open_settings,
         ])
         .setup(|app| {
+            app.manage(status::AppStatus::new(
+                nuenly_modes::ModeManager::official()?
+            ));
             let config = app.path().app_config_dir()?.join(config::FILE_NAME);
             app.manage(config::ConfigStore::load(config));
             app.manage(nuenly_llm::OllamaProvider::new()?);

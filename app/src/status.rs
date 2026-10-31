@@ -1,9 +1,10 @@
 //! Status Nuenly yang tampil di tray (F-25, US-3): mode aktif dan jeda.
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nuenly_core::{ActivePolicy, ModeId};
+use nuenly_core::ActivePolicy;
+use nuenly_modes::ModeManager;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -12,62 +13,44 @@ use crate::onboarding;
 /// Lama jeda dari tombol "Jeda 15 menit".
 const PAUSE: Duration = Duration::from_mins(15);
 
-/// Mode yang tersedia. Sementara ditulis di sini; `ModeManager` (F-14) akan memuatnya dari
-/// mode pack. Modul lain membaca kebijakan, tidak bercabang berdasarkan `id`.
-const MODES: [ModeInfo; 2] = [
-    ModeInfo {
-        id: "all",
-        label: "Umum",
-        accent: "#4f46e5",
-        context_preview: true,
-    },
-    ModeInfo {
-        id: "medical",
-        label: "Medical",
-        accent: "#0f766e",
-        // Teks klinis tidak ditampilkan ulang; aturan Medical lengkap menyusul di mode pack.
-        context_preview: false,
-    },
-];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-pub struct ModeInfo {
-    pub id: &'static str,
-    pub label: &'static str,
+/// Mode untuk jendela, dari mode pack. Jendela memakai `id` hanya untuk memilih mode, tidak
+/// untuk bercabang.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ModeView {
+    pub id: String,
+    pub label: String,
     /// Warna aksen mode untuk sentuhan kecil di UI (titik logo, segmen aktif).
-    pub accent: &'static str,
-    /// Nilai `ActivePolicy::context_preview` untuk mode ini.
-    #[serde(skip)]
-    pub context_preview: bool,
+    pub accent: String,
 }
 
 /// Status untuk jendela; dikirim lewat `status_get` dan event `status:changed`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusView {
-    pub modes: &'static [ModeInfo],
-    pub active_mode: &'static str,
+    pub modes: Vec<ModeView>,
+    pub active_mode: String,
     /// Akhir jeda dalam milidetik sejak epoch Unix; `None` bila tidak dijeda.
     pub paused_until_ms: Option<u64>,
 }
 
 /// Logika status tanpa Tauri agar bisa dites.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Status {
-    active: usize,
+    modes: ModeManager,
     paused_until: Option<SystemTime>,
 }
 
 impl Status {
+    pub fn new(modes: ModeManager) -> Self {
+        Self {
+            modes,
+            paused_until: None,
+        }
+    }
+
     /// Mengganti mode; `false` bila `id` tidak dikenal.
     pub fn set_mode(&mut self, id: &str) -> bool {
-        match MODES.iter().position(|mode| mode.id == id) {
-            Some(index) => {
-                self.active = index;
-                true
-            }
-            None => false,
-        }
+        self.modes.activate(id)
     }
 
     pub fn pause(&mut self, now: SystemTime, duration: Duration) {
@@ -78,37 +61,58 @@ impl Status {
         self.paused_until = None;
     }
 
-    /// Kebijakan mode aktif. Sementara berisi nilai bawaan `ActivePolicy` sampai `ModeManager`
-    /// (F-14) memuatnya dari mode pack.
-    pub fn policy(&self) -> Option<ActivePolicy> {
-        let mode = MODES.get(self.active)?;
-        let mut policy = ActivePolicy::new(ModeId::new(mode.id).ok()?);
-        policy.context_preview = mode.context_preview;
-        Some(policy)
+    /// Kebijakan mode aktif, dari mode pack.
+    pub fn policy(&self) -> ActivePolicy {
+        self.modes.active().policy().clone()
     }
 
-    /// Status pada waktu `now`; jeda yang sudah lewat dianggap selesai.
-    pub fn view(&self, now: SystemTime) -> StatusView {
-        let paused_until_ms = self
-            .paused_until
+    /// Prompt sistem Tanya Nuenly mode aktif.
+    pub fn ask_prompt(&self) -> &'static str {
+        self.modes.active().ask_prompt()
+    }
+
+    /// Akhir jeda dalam milidetik sejak epoch Unix; jeda yang sudah lewat dianggap selesai.
+    fn paused_until_ms(&self, now: SystemTime) -> Option<u64> {
+        self.paused_until
             .filter(|until| *until > now)
             .and_then(|until| until.duration_since(UNIX_EPOCH).ok())
-            .map(|since_epoch| u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX));
+            .map(|since_epoch| u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX))
+    }
+
+    /// Status pada waktu `now`.
+    pub fn view(&self, now: SystemTime) -> StatusView {
+        let modes = self
+            .modes
+            .packs()
+            .iter()
+            .map(|pack| ModeView {
+                id: pack.id().as_str().to_owned(),
+                label: pack.label().to_owned(),
+                accent: pack.accent().to_owned(),
+            })
+            .collect();
         StatusView {
-            modes: &MODES,
-            active_mode: MODES.get(self.active).map_or(MODES[0].id, |mode| mode.id),
-            paused_until_ms,
+            modes,
+            active_mode: self.modes.active().id().as_str().to_owned(),
+            paused_until_ms: self.paused_until_ms(now),
         }
     }
 }
 
 /// State terkelola Tauri.
-#[derive(Default)]
 pub struct AppStatus(Mutex<Status>);
 
 impl AppStatus {
+    pub fn new(modes: ModeManager) -> Self {
+        Self(Mutex::new(Status::new(modes)))
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Status> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn update<T>(&self, change: impl FnOnce(&mut Status) -> T) -> (T, StatusView) {
-        let mut status = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut status = self.lock();
         let result = change(&mut status);
         (result, status.view(SystemTime::now()))
     }
@@ -119,11 +123,16 @@ impl AppStatus {
 
     /// Kebijakan baca saat ini, atau `None` selama dijeda: Nuenly tidak membaca apa pun.
     pub fn reading_policy(&self) -> Option<ActivePolicy> {
-        let status = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        if status.view(SystemTime::now()).paused_until_ms.is_some() {
+        let status = self.lock();
+        if status.paused_until_ms(SystemTime::now()).is_some() {
             return None;
         }
-        status.policy()
+        Some(status.policy())
+    }
+
+    /// Prompt sistem Tanya Nuenly mode aktif.
+    pub fn ask_prompt(&self) -> &'static str {
+        self.lock().ask_prompt()
     }
 }
 
@@ -194,7 +203,7 @@ pub fn tooltip(view: &StatusView, accepted: bool) -> String {
         .modes
         .iter()
         .find(|mode| mode.id == view.active_mode)
-        .map_or("", |mode| mode.label);
+        .map_or("", |mode| mode.label.as_str());
     format!("Nuenly · {label}")
 }
 
@@ -202,19 +211,38 @@ pub fn tooltip(view: &StatusView, accepted: bool) -> String {
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
+    use nuenly_modes::ModeManager;
+
     use super::{Status, tooltip};
+
+    fn status() -> Status {
+        Status::new(ModeManager::official().unwrap())
+    }
 
     #[test]
     fn starts_in_the_first_mode_and_not_paused() {
-        let view = Status::default().view(UNIX_EPOCH);
+        let view = status().view(UNIX_EPOCH);
         assert_eq!(view.active_mode, "all");
         assert_eq!(view.paused_until_ms, None);
         assert_eq!(tooltip(&view, true), "Nuenly · Umum");
     }
 
     #[test]
+    fn windows_receive_the_modes_from_the_mode_packs() {
+        let view = serde_json::to_value(status().view(UNIX_EPOCH)).unwrap();
+        assert_eq!(
+            view["modes"],
+            serde_json::json!([
+                { "id": "all", "label": "Umum", "accent": "#4f46e5" },
+                { "id": "medical", "label": "Medical", "accent": "#0f766e" },
+            ])
+        );
+        assert_eq!(view["activeMode"], "all");
+    }
+
+    #[test]
     fn inactive_until_privacy_is_accepted() {
-        let mut status = Status::default();
+        let mut status = status();
         status.pause(UNIX_EPOCH, Duration::from_mins(15));
         assert_eq!(
             tooltip(&status.view(UNIX_EPOCH), false),
@@ -223,36 +251,23 @@ mod tests {
     }
 
     #[test]
-    fn switches_only_to_known_modes() {
-        let mut status = Status::default();
+    fn policy_and_prompt_follow_the_active_mode() {
+        let mut status = status();
+        let umum_prompt = status.ask_prompt();
+        assert!(status.policy().context_preview);
+
         assert!(status.set_mode("medical"));
         assert!(!status.set_mode("tidak-ada"));
         assert_eq!(status.view(UNIX_EPOCH).active_mode, "medical");
-        assert_eq!(status.policy().unwrap().mode.as_str(), "medical");
-    }
-
-    #[test]
-    fn only_umum_shows_the_selected_text() {
-        let mut status = Status::default();
-        assert!(status.policy().unwrap().context_preview);
-        assert!(status.set_mode("medical"));
-        assert!(!status.policy().unwrap().context_preview);
-    }
-
-    #[test]
-    fn every_mode_has_a_local_only_policy() {
-        let mut status = Status::default();
-        for mode in super::MODES {
-            assert!(status.set_mode(mode.id));
-            let policy = status.policy().unwrap();
-            assert_eq!(policy.egress, nuenly_core::Egress::LocalOnly);
-        }
+        assert_eq!(status.policy().mode.as_str(), "medical");
+        assert!(!status.policy().context_preview);
+        assert_ne!(status.ask_prompt(), umum_prompt);
     }
 
     #[test]
     fn pause_ends_on_time_or_on_resume() {
         let now = UNIX_EPOCH + Duration::from_secs(1_000);
-        let mut status = Status::default();
+        let mut status = status();
         status.pause(now, Duration::from_mins(15));
 
         let paused = status.view(now);
