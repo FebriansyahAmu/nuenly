@@ -9,8 +9,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
 
 use crate::context::ContextReader;
-use crate::onboarding;
 use crate::status::AppStatus;
+use crate::{foreground, onboarding};
 
 pub const LABEL: &str = "ask";
 
@@ -143,6 +143,9 @@ fn read_selection(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
     if own_window_focused {
         return (None, AskOpen::default());
     }
+    // Mode dipastikan milik aplikasi ini sebelum kebijakannya dipakai, tanpa menunggu event
+    // latar depan yang mungkin belum tiba.
+    foreground::sync(app);
     let Some(policy) = app.state::<AppStatus>().reading_policy() else {
         let open = AskOpen {
             context: None,

@@ -57,6 +57,13 @@
       active={state.status.activeMode}
       onselect={(id) => state.setMode(id)}
     />
+    <p class="mt-3 text-[13px] text-muted-foreground">
+      {#if state.status.appName}
+        Pilihan ini berlaku untuk {state.status.appName} dan diingat setiap kali Anda membukanya.
+      {:else}
+        Mode berganti otomatis sesuai aplikasi yang Anda buka.
+      {/if}
+    </p>
   </Card.Content>
 </Card.Root>
 

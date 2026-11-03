@@ -8,6 +8,7 @@ mod ask;
 mod clipboard;
 mod config;
 mod context;
+mod foreground;
 mod hardware;
 mod hotkey;
 mod ollama;
@@ -47,17 +48,25 @@ fn main() -> anyhow::Result<()> {
             tray::open_settings,
         ])
         .setup(|app| {
-            app.manage(status::AppStatus::new(
-                nuenly_modes::ModeManager::official()?
-            ));
             let config = app.path().app_config_dir()?.join(config::FILE_NAME);
-            app.manage(config::ConfigStore::load(config));
+            let store = config::ConfigStore::load(config);
+            let mut modes = nuenly_modes::ModeManager::official()?;
+            let saved = store.get();
+            modes.restore(
+                saved
+                    .app_modes
+                    .iter()
+                    .map(|(app, id)| (app.as_str(), id.as_str())),
+            );
+            app.manage(store);
+            app.manage(status::AppStatus::new(modes));
             app.manage(nuenly_llm::OllamaProvider::new()?);
             app.manage(context::ContextReader::new());
             // Didaftarkan setelah semua state yang dipakai alur hotkey tersedia.
-            let shortcut = hotkey::configured(&app.state::<config::ConfigStore>().get());
+            let shortcut = hotkey::configured(&saved);
             app.manage(hotkey::HotkeyState::register(app.handle(), shortcut));
             tray::create(app.handle())?;
+            foreground::watch(app.handle());
             // Nuenly tidak membaca apa pun sampai pemberitahuan privasi disetujui.
             if !onboarding::accepted(app.handle()) {
                 onboarding::show(app.handle());

@@ -1,14 +1,17 @@
-//! Status Nuenly yang tampil di tray (F-25, US-3): mode aktif dan jeda.
+//! Status Nuenly yang tampil di tray (F-25, US-3): mode aktif, aplikasi yang sedang dibantu,
+//! dan jeda. Mode mengikuti aplikasi di latar depan (F-14).
 
+use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nuenly_core::ActivePolicy;
+use nuenly_core::{ActivePolicy, AppIdentity};
 use nuenly_modes::ModeManager;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::onboarding;
+use crate::config::ConfigStore;
+use crate::{foreground, onboarding};
 
 /// Lama jeda dari tombol "Jeda 15 menit".
 const PAUSE: Duration = Duration::from_mins(15);
@@ -29,6 +32,9 @@ pub struct ModeView {
 pub struct StatusView {
     pub modes: Vec<ModeView>,
     pub active_mode: String,
+    /// Nama aplikasi yang sedang dibantu, untuk "Membantu di …". Pilihan mode diingat untuk
+    /// aplikasi ini. `None` bila belum ada, atau bila filter aplikasi tidak mengizinkannya.
+    pub app_name: Option<String>,
     /// Akhir jeda dalam milidetik sejak epoch Unix; `None` bila tidak dijeda.
     pub paused_until_ms: Option<u64>,
 }
@@ -37,6 +43,8 @@ pub struct StatusView {
 #[derive(Debug)]
 pub struct Status {
     modes: ModeManager,
+    /// Aplikasi terakhir di latar depan selain Nuenly dan shell Windows.
+    app: Option<AppIdentity>,
     paused_until: Option<SystemTime>,
 }
 
@@ -44,13 +52,45 @@ impl Status {
     pub fn new(modes: ModeManager) -> Self {
         Self {
             modes,
+            app: None,
             paused_until: None,
         }
     }
 
-    /// Mengganti mode; `false` bila `id` tidak dikenal.
+    /// Aplikasi di latar depan berganti ke `app`, dan mode mengikuti pilihan yang diingat untuk
+    /// aplikasi itu. `false` bila aplikasinya tetap sama.
+    pub fn follow(&mut self, app: AppIdentity) -> bool {
+        if self.app.as_ref() == Some(&app) {
+            return false;
+        }
+        self.modes.follow(&app.process);
+        self.app = Some(app);
+        true
+    }
+
+    /// Mengganti mode dan mengingatnya untuk aplikasi yang sedang dibantu. `false` bila `id`
+    /// tidak dikenal.
     pub fn set_mode(&mut self, id: &str) -> bool {
-        self.modes.activate(id)
+        let app = self.helped_app().map(|app| app.process.clone());
+        self.modes.choose(id, app.as_ref())
+    }
+
+    /// Mode pilihan pengguna per aplikasi, untuk disimpan di `config.json`.
+    pub fn remembered(&self) -> BTreeMap<String, String> {
+        self.modes
+            .remembered()
+            .map(|(app, id)| (app.as_str().to_owned(), id.as_str().to_owned()))
+            .collect()
+    }
+
+    /// Aplikasi yang sedang dibantu: aplikasi terakhir di latar depan, bila mode aktif boleh
+    /// membacanya. Aplikasi yang tidak pernah dibaca (misalnya pengelola kata sandi) tidak
+    /// disebut dan tidak diingat modenya.
+    fn helped_app(&self) -> Option<&AppIdentity> {
+        let policy = self.modes.active().policy();
+        self.app
+            .as_ref()
+            .filter(|app| policy.apps.permits(&app.process))
     }
 
     pub fn pause(&mut self, now: SystemTime, duration: Duration) {
@@ -94,6 +134,7 @@ impl Status {
         StatusView {
             modes,
             active_mode: self.modes.active().id().as_str().to_owned(),
+            app_name: self.helped_app().map(|app| app.display_name.clone()),
             paused_until_ms: self.paused_until_ms(now),
         }
     }
@@ -134,6 +175,17 @@ impl AppStatus {
     pub fn ask_prompt(&self) -> &'static str {
         self.lock().ask_prompt()
     }
+
+    /// Aplikasi di latar depan berganti. Selama dijeda Nuenly tidak mengikutinya. Hasilnya
+    /// status baru bila ada yang berubah.
+    pub fn follow(&self, app: AppIdentity) -> Option<StatusView> {
+        let mut status = self.lock();
+        let now = SystemTime::now();
+        if status.paused_until_ms(now).is_some() || !status.follow(app) {
+            return None;
+        }
+        Some(status.view(now))
+    }
 }
 
 #[tauri::command]
@@ -142,17 +194,24 @@ pub fn status_get(status: State<'_, AppStatus>) -> StatusView {
     status.view()
 }
 
+/// Pilihan mode dari tray atau Pengaturan, diingat untuk aplikasi yang sedang dibantu.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
 pub fn status_set_mode(
     app: AppHandle,
     status: State<'_, AppStatus>,
+    store: State<'_, ConfigStore>,
     id: String,
 ) -> Result<StatusView, String> {
-    let (known, view) = status.update(|status| status.set_mode(&id));
-    if !known {
+    let (remembered, view) = status.update(|status| {
+        let known = status.set_mode(&id);
+        known.then(|| status.remembered())
+    });
+    let Some(remembered) = remembered else {
         return Err("Mode tidak dikenal.".to_owned());
-    }
+    };
+    // Bila gagal disimpan, pilihan tetap berlaku sampai Nuenly ditutup.
+    let _ = store.update(|config| config.app_modes = remembered);
     broadcast(&app, &view);
     Ok(view)
 }
@@ -166,9 +225,8 @@ pub fn status_pause(app: AppHandle, status: State<'_, AppStatus>) -> StatusView 
     // Setelah jeda berakhir, siarkan status baru agar tray dan jendela lain ikut berubah.
     std::thread::spawn(move || {
         std::thread::sleep(PAUSE);
-        let view = app.state::<AppStatus>().view();
-        if view.paused_until_ms.is_none() {
-            broadcast(&app, &view);
+        if app.state::<AppStatus>().view().paused_until_ms.is_none() {
+            resumed(&app);
         }
     });
     view
@@ -177,8 +235,15 @@ pub fn status_pause(app: AppHandle, status: State<'_, AppStatus>) -> StatusView 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
 pub fn status_resume(app: AppHandle, status: State<'_, AppStatus>) -> StatusView {
-    let ((), view) = status.update(Status::resume);
-    broadcast(&app, &view);
+    status.update(Status::resume);
+    resumed(&app)
+}
+
+/// Setelah jeda berakhir, mode kembali mengikuti aplikasi yang ada di depan saat ini.
+fn resumed(app: &AppHandle) -> StatusView {
+    foreground::sync(app);
+    let view = app.state::<AppStatus>().view();
+    broadcast(app, &view);
     view
 }
 
@@ -209,14 +274,23 @@ pub fn tooltip(view: &StatusView, accepted: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, UNIX_EPOCH};
+    use std::collections::BTreeMap;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use nuenly_core::{AppIdentity, ProcessName};
     use nuenly_modes::ModeManager;
 
-    use super::{Status, tooltip};
+    use super::{AppStatus, Status, tooltip};
 
     fn status() -> Status {
         Status::new(ModeManager::official().unwrap())
+    }
+
+    fn app(process: &str, display_name: &str) -> AppIdentity {
+        AppIdentity {
+            process: ProcessName::new(process).unwrap(),
+            display_name: display_name.to_owned(),
+        }
     }
 
     #[test]
@@ -238,6 +312,56 @@ mod tests {
             ])
         );
         assert_eq!(view["activeMode"], "all");
+        assert_eq!(view["appName"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn a_mode_chosen_in_an_app_returns_with_that_app() {
+        let mut status = status();
+        assert!(status.follow(app("klinik.exe", "Klinik Sintetis")));
+        assert_eq!(
+            status.view(UNIX_EPOCH).app_name.as_deref(),
+            Some("Klinik Sintetis")
+        );
+        assert!(status.set_mode("medical"));
+
+        assert!(status.follow(app("notepad.exe", "Notepad")));
+        assert_eq!(status.view(UNIX_EPOCH).active_mode, "all");
+        assert!(status.follow(app("klinik.exe", "Klinik Sintetis")));
+        assert_eq!(status.view(UNIX_EPOCH).active_mode, "medical");
+        assert_eq!(
+            status.remembered(),
+            BTreeMap::from([("klinik.exe".to_owned(), "medical".to_owned())])
+        );
+    }
+
+    #[test]
+    fn while_paused_app_changes_are_not_followed() {
+        let status = AppStatus::new(ModeManager::official().unwrap());
+        status.update(|status| status.pause(SystemTime::now(), Duration::from_mins(15)));
+        assert_eq!(status.follow(app("notepad.exe", "Notepad")), None);
+
+        status.update(Status::resume);
+        let view = status.follow(app("notepad.exe", "Notepad")).unwrap();
+        assert_eq!(view.app_name.as_deref(), Some("Notepad"));
+    }
+
+    #[test]
+    fn the_same_app_again_changes_nothing() {
+        let mut status = status();
+        assert!(status.follow(app("notepad.exe", "Notepad")));
+        assert!(!status.follow(app("notepad.exe", "Notepad")));
+    }
+
+    #[test]
+    fn apps_that_are_never_read_are_not_named_or_remembered() {
+        let mut status = status();
+        status.follow(app("keepass.exe", "KeePass"));
+        assert_eq!(status.view(UNIX_EPOCH).app_name, None);
+
+        assert!(status.set_mode("medical"));
+        assert_eq!(status.view(UNIX_EPOCH).active_mode, "medical");
+        assert_eq!(status.remembered(), BTreeMap::new());
     }
 
     #[test]
@@ -262,6 +386,8 @@ mod tests {
         assert_eq!(status.policy().mode.as_str(), "medical");
         assert!(!status.policy().context_preview);
         assert_ne!(status.ask_prompt(), umum_prompt);
+        // Tanpa aplikasi yang sedang dibantu, pilihannya tidak diingat untuk siapa pun.
+        assert_eq!(status.remembered(), BTreeMap::new());
     }
 
     #[test]

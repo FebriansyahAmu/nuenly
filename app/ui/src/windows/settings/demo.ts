@@ -43,8 +43,8 @@ function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
 
 /**
  * `?halaman=general|model|privacy|connector` (bawaannya model, seperti desain 07),
- * `?ollama=running|kosong|installed|missing`, `?otomatis`, `?jeda`, `?pintasan=taken|failed`,
- * dan `?tombol=<pintasan>` (misalnya `Alt+Space`).
+ * `?ollama=running|kosong|installed|missing`, `?otomatis`, `?jeda`, `?tanpa-aplikasi`,
+ * `?pintasan=taken|failed`, dan `?tombol=<pintasan>` (misalnya `Alt+Space`).
  */
 export function demoSettings(params: URLSearchParams): SettingsState {
   const hotkeyStatus = params.get('pintasan');
@@ -58,6 +58,7 @@ export function demoSettings(params: URLSearchParams): SettingsState {
   let status: StatusView = {
     modes: MODES,
     activeMode: 'all',
+    appName: params.has('tanpa-aplikasi') ? null : 'Notepad',
     pausedUntilMs: params.has('jeda') ? Date.now() + 15 * 60 * 1000 : null,
   };
   const ollama = OLLAMA[params.get('ollama') ?? 'running'] ?? OLLAMA.running;

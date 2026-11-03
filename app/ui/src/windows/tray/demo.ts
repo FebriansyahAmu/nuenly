@@ -9,11 +9,15 @@ const MODES = [
   { id: 'medical', label: 'Medical', accent: '#0f766e' },
 ];
 
-/** `?jeda` membuka dalam keadaan dijeda; bawaannya mode Medical seperti desain 04. */
+/**
+ * `?jeda` membuka dalam keadaan dijeda dan `?tanpa-aplikasi` tanpa aplikasi yang dibantu;
+ * bawaannya mode Medical di MedApp seperti desain 04.
+ */
 export function demoTray(params: URLSearchParams): { initial: StatusView; backend: TrayBackend } {
   let status: StatusView = {
     modes: MODES,
     activeMode: 'medical',
+    appName: params.has('tanpa-aplikasi') ? null : 'MedApp',
     pausedUntilMs: params.has('jeda') ? Date.now() + 15 * 60 * 1000 : null,
   };
   const update = (change: Partial<StatusView>) => Promise.resolve((status = { ...status, ...change }));
