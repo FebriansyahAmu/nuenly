@@ -1,5 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 
+import { OLLAMA_EXPOSED } from '$lib/ollama';
+
 import { type AskBackend, AskError, type AskReply } from './backend';
 
 /** Sama dengan `AnswerEvent` di `app/src/answer.rs`. */
@@ -8,6 +10,7 @@ type AnswerEvent = { kind: 'token'; text: string } | { kind: 'end' };
 /** Sama dengan `AskFailure` di `app/src/answer.rs`. */
 export type AskFailure =
   | 'ollamaNotRunning'
+  | 'ollamaExposed'
   | 'noModel'
   | 'modelMissing'
   | 'modelTooLarge'
@@ -19,6 +22,7 @@ export type AskFailure =
 
 const FAILURE: Record<AskFailure, string> = {
   ollamaNotRunning: 'Ollama belum berjalan. Buka Ollama dari menu Start, lalu coba lagi.',
+  ollamaExposed: `${OLLAMA_EXPOSED} Hapus pengaturan OLLAMA_HOST di Windows, buka ulang Ollama, lalu coba lagi.`,
   noModel: 'Belum ada model di Ollama. Caranya ada di Pengaturan › Model AI.',
   modelMissing: 'Model pilihan Anda tidak ada di Ollama. Pilih model lain di Pengaturan › Model AI.',
   modelTooLarge: 'Model ini terlalu berat untuk PC ini. Pilih model yang lebih kecil di Pengaturan › Model AI.',

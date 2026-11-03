@@ -44,6 +44,8 @@ pub struct AskReply {
 #[serde(rename_all = "camelCase")]
 pub enum AskFailure {
     OllamaNotRunning,
+    /// Ollama juga bisa dihubungi dari jaringan, jadi Nuenly tidak mengirim teks ke sana.
+    OllamaExposed,
     /// Belum ada model yang bisa dipakai untuk percakapan.
     NoModel,
     /// Model pilihan pengguna tidak ada di Ollama.
@@ -95,6 +97,9 @@ pub async fn ask_send(
         return Err(AskFailure::TooLong);
     }
 
+    if ollama::exposed().await {
+        return Err(AskFailure::OllamaExposed);
+    }
     let models = ollama::local_models(&provider).await?;
     let preferred = store.get().model;
     let plan = choose(&hardware.get().await, &models, preferred.as_deref())?;

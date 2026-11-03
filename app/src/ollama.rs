@@ -3,10 +3,11 @@
 //! (F-13) untuk model yang dipakai.
 
 use std::ffi::OsStr;
+use std::net::IpAddr;
 use std::path::Path;
 
 use nuenly_context::{Candidate, ModelPlan, Placement};
-use nuenly_llm::ollama::OllamaModel;
+use nuenly_llm::ollama::{DEFAULT_ADDRESS, OllamaModel};
 use nuenly_llm::{LlmError, OllamaProvider};
 use serde::Serialize;
 use tauri::State;
@@ -27,6 +28,8 @@ const DOWNLOAD_PAGE: &str = "https://ollama.com/download/windows";
 pub enum OllamaStatus {
     /// Ollama menjawab di 127.0.0.1:11434.
     Running,
+    /// Ollama berjalan, tetapi juga bisa dihubungi dari jaringan, jadi tidak dipakai.
+    Exposed,
     /// Program Ollama ada, tetapi belum dijalankan.
     Installed,
     #[default]
@@ -113,6 +116,14 @@ pub async fn detect(
     preferred: Option<&str>,
 ) -> OllamaInfo {
     if let Ok(version) = provider.version().await {
+        if exposed().await {
+            return OllamaInfo {
+                status: OllamaStatus::Exposed,
+                version: Some(version),
+                hardware,
+                ..OllamaInfo::default()
+            };
+        }
         let local = local_models(provider).await.unwrap_or_default();
         let plan =
             plan(&hardware, &local, preferred).map(|plan| PlanView::new(plan, preferred.is_none()));
@@ -141,6 +152,37 @@ pub async fn detect(
         hardware,
         ..OllamaInfo::default()
     }
+}
+
+/// Ollama bisa dihubungi komputer lain di jaringan: ada socket di port Ollama yang mendengarkan
+/// di luar loopback, biasanya karena `OLLAMA_HOST=0.0.0.0`. API Ollama tanpa autentikasi, jadi
+/// siapa pun di jaringan bisa memakai, menghapus, atau mengganti modelnya. Setiap jalur yang
+/// mengirim teks ke Ollama wajib memeriksanya lebih dulu (ADR 0011).
+pub async fn exposed() -> bool {
+    let port = DEFAULT_ADDRESS.port();
+    if let Ok(Ok(addresses)) = tauri::async_runtime::spawn_blocking(move || listeners(port)).await {
+        return reachable_from_network(&addresses);
+    }
+    // Kegagalan membaca tabel tidak bisa dipicu dari jaringan, jadi Nuenly tetap jalan.
+    tracing::warn!("tabel socket tidak terbaca; Ollama dianggap hanya untuk PC ini");
+    false
+}
+
+/// `true` bila ada alamat selain loopback, termasuk `0.0.0.0` dan `::`.
+fn reachable_from_network(addresses: &[IpAddr]) -> bool {
+    addresses
+        .iter()
+        .any(|address| !address.to_canonical().is_loopback())
+}
+
+#[cfg(windows)]
+fn listeners(port: u16) -> std::io::Result<Vec<IpAddr>> {
+    nuenly_platform_windows::network::listening_addresses(port)
+}
+
+#[cfg(not(windows))]
+fn listeners(_port: u16) -> std::io::Result<Vec<IpAddr>> {
+    Err(std::io::Error::other("belum didukung di OS ini"))
 }
 
 /// Selalu berhasil; `Result` hanya karena command async yang memakai `State` wajib mengembalikannya.
@@ -186,9 +228,37 @@ fn installed(local_app_data: Option<&OsStr>, path: Option<&OsStr>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::net::IpAddr;
     use std::path::PathBuf;
 
-    use super::{EXE, OllamaStatus, detect, installed};
+    use super::{EXE, OllamaStatus, detect, installed, reachable_from_network};
+
+    #[test]
+    fn only_loopback_is_private() {
+        let parse = |addresses: &[&str]| -> Vec<IpAddr> {
+            addresses
+                .iter()
+                .map(|address| address.parse().unwrap())
+                .collect()
+        };
+        for private in [
+            &[][..],
+            &["127.0.0.1"],
+            &["::1"],
+            &["::ffff:127.0.0.1"],
+            &["127.0.0.1", "::1"],
+        ] {
+            assert!(!reachable_from_network(&parse(private)), "{private:?}");
+        }
+        for exposed in [
+            &["0.0.0.0"][..],
+            &["::"],
+            &["192.168.1.10"],
+            &["127.0.0.1", "0.0.0.0"],
+        ] {
+            assert!(reachable_from_network(&parse(exposed)), "{exposed:?}");
+        }
+    }
 
     // Ollama dan GPU sungguhan di PC pengembang; tidak memuat model.
     // Jalankan manual: cargo test -p nuenly --bin nuenly plans_for_this_pc -- --ignored --nocapture

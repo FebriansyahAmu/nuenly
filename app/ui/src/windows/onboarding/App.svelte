@@ -13,6 +13,7 @@
 
   import NuenlyMark from '$lib/components/nuenly-mark.svelte';
   import { Button } from '$lib/components/ui/button';
+  import { OLLAMA_EXPOSED } from '$lib/ollama';
   import { LOCAL_ONLY, NEVER, READS } from '$lib/privacy';
   import { cn } from '$lib/utils';
 
@@ -133,6 +134,9 @@
         {#if flow.ollama === 'running'}
           <CircleCheck class="size-[18px] shrink-0 text-green-600" aria-hidden="true" />
           Ollama sudah berjalan di PC ini.
+        {:else if flow.ollama === 'exposed'}
+          <CircleAlert class="size-[18px] shrink-0 text-amber-600" aria-hidden="true" />
+          {OLLAMA_EXPOSED}
         {:else if flow.ollama === 'installed'}
           <CircleAlert class="size-[18px] shrink-0 text-amber-600" aria-hidden="true" />
           Ollama sudah terpasang, tetapi belum berjalan.
@@ -147,6 +151,17 @@
 
       {#if flow.ollama === 'running'}
         <p class="mt-4 text-muted-foreground">Pilihan model ada di Pengaturan › Model AI.</p>
+      {:else if flow.ollama === 'exposed'}
+        <ol class="mt-4 space-y-3">
+          <li class="flex items-center gap-2.5">
+            {@render stepNumber(1)}
+            Hapus pengaturan OLLAMA_HOST di variabel lingkungan Windows.
+          </li>
+          <li class="flex items-center gap-2.5">
+            {@render stepNumber(2)}
+            Keluar dari Ollama, buka lagi dari menu Start, lalu klik Periksa lagi.
+          </li>
+        </ol>
       {:else if flow.ollama === 'installed'}
         <ol class="mt-4 space-y-3">
           <li class="flex items-center gap-2.5">

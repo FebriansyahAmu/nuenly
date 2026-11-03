@@ -9,7 +9,7 @@
   import * as Card from '$lib/components/ui/card';
   import { cn } from '$lib/utils';
 
-  import type { Placement } from '$lib/ollama';
+  import { OLLAMA_EXPOSED, type Placement } from '$lib/ollama';
 
   import Advanced from './Advanced.svelte';
   import { formatMemory, type ModelState, type SettingsState } from './settings.svelte';
@@ -21,6 +21,7 @@
     ready: 'Siap',
     'no-models': 'Belum ada model',
     'model-missing': 'Model tidak ditemukan',
+    exposed: 'Terbuka ke jaringan',
     'not-running': 'Ollama belum berjalan',
     'not-installed': 'Ollama belum terpasang',
   };
@@ -129,6 +130,8 @@
             Pasang Ollama agar Nuenly bisa menjawab.
           {:else if state.modelState === 'not-running'}
             Buka Ollama dari menu Start, lalu periksa lagi.
+          {:else if state.modelState === 'exposed'}
+            {OLLAMA_EXPOSED} Hapus pengaturan OLLAMA_HOST di Windows, buka ulang Ollama, lalu periksa lagi.
           {:else if state.modelState === 'no-models'}
             Belum ada model di Ollama. Caranya ada di Pengaturan lanjutan.
           {:else}

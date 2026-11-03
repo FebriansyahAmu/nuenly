@@ -12,7 +12,14 @@ export const PAGES = [
 export type PageId = (typeof PAGES)[number]['id'];
 
 /** Kesiapan model yang dipakai, untuk penanda di kartu "Sedang dipakai". */
-export type ModelState = 'checking' | 'ready' | 'no-models' | 'model-missing' | 'not-running' | 'not-installed';
+export type ModelState =
+  | 'checking'
+  | 'ready'
+  | 'no-models'
+  | 'model-missing'
+  | 'exposed'
+  | 'not-running'
+  | 'not-installed';
 
 export function modelState(ollama: OllamaInfo | null, model: string | null): ModelState {
   if (ollama === null) {
@@ -23,6 +30,8 @@ export function modelState(ollama: OllamaInfo | null, model: string | null): Mod
       return 'not-installed';
     case 'installed':
       return 'not-running';
+    case 'exposed':
+      return 'exposed';
     case 'running':
       if (ollama.models.length === 0) {
         return 'no-models';

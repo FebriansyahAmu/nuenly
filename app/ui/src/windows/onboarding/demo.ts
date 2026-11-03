@@ -5,15 +5,16 @@ import { STEPS, type Step } from './flow.svelte';
 
 /**
  * `?langkah=1|2|3` membuka langkah tertentu (bawaannya 2, seperti desain 06);
- * `?ollama=running|installed|missing|checking` mengatur hasil pemeriksaan Ollama.
+ * `?ollama=running|exposed|installed|missing|checking` mengatur hasil pemeriksaan Ollama.
  */
 export function demoOnboarding(params: URLSearchParams): { backend: OnboardingBackend; step: Step } {
   const step = STEPS[Number(params.get('langkah') ?? 2) - 1] ?? 'privacy';
   const ollama = params.get('ollama') ?? 'missing';
+  const known: OllamaStatus[] = ['running', 'exposed', 'installed'];
   const checkOllama = (): Promise<OllamaStatus> =>
     ollama === 'checking'
       ? new Promise(() => {})
-      : Promise.resolve(ollama === 'running' || ollama === 'installed' ? ollama : 'missing');
+      : Promise.resolve(known.find((status) => status === ollama) ?? 'missing');
   return {
     step,
     backend: {
