@@ -16,6 +16,7 @@ const SETTINGS: SettingsView = {
 const STATUS: StatusView = {
   modes: [{ id: 'all', label: 'Umum', accent: '#4f46e5' }],
   activeMode: 'all',
+  appName: null,
   pausedUntilMs: null,
 };
 const info = (status: OllamaStatus, models: string[] = []): OllamaInfo => ({

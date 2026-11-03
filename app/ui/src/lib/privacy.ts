@@ -5,6 +5,7 @@
 export const READS = [
   'Membaca field yang sedang Anda isi',
   'Membaca teks yang Anda pilih saat memanggil Nuenly',
+  'Mengenali aplikasi yang sedang Anda pakai dari namanya, untuk memilih mode',
   'Memeriksa alamat dan judul jendela browser, hanya untuk melewati situs perbankan dan jendela privat',
 ];
 

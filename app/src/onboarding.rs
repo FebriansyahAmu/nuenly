@@ -4,6 +4,7 @@
 use tauri::{AppHandle, Manager, State};
 
 use crate::config::ConfigStore;
+use crate::foreground;
 use crate::status::{self, AppStatus};
 use crate::toast::{self, Toast, ToastContent};
 
@@ -14,7 +15,8 @@ pub const LABEL: &str = "onboarding";
 ///
 /// 2: alamat dan judul jendela browser diperiksa untuk melewati situs perbankan dan jendela
 /// privat.
-pub const PRIVACY_VERSION: u32 = 2;
+/// 3: aplikasi di latar depan dikenali terus-menerus (nama executable saja) untuk memilih mode.
+pub const PRIVACY_VERSION: u32 = 3;
 
 /// Apakah pengguna sudah menyetujui pemberitahuan privasi versi ini.
 pub fn accepted(app: &AppHandle) -> bool {
@@ -51,6 +53,8 @@ pub fn onboarding_accept(
     store
         .update(|config| config.privacy_accepted = PRIVACY_VERSION)
         .map_err(|_| "Persetujuan tidak bisa disimpan. Coba lagi.".to_owned())?;
+    // Mode baru mulai mengikuti aplikasi di latar depan setelah persetujuan.
+    foreground::sync(&app);
     status::broadcast(&app, &status.view());
     Ok(())
 }

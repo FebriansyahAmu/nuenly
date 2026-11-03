@@ -3,7 +3,9 @@
 use std::ffi::c_void;
 use std::path::Path;
 
-use nuenly_core::{AppIdentity, ContextError, ForegroundWindow, SensitiveText, WindowHandle};
+use nuenly_core::{
+    AppIdentity, ContextError, ForegroundWindow, ProcessName, SensitiveText, WindowHandle,
+};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Storage::FileSystem::{
     GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
@@ -36,7 +38,7 @@ pub fn foreground_window() -> Result<Option<ForegroundWindow>, ContextError> {
     };
     let path = process_path(pid)?;
     let process = name_of(&path)?;
-    let display_name = file_description(&path).unwrap_or_else(|| file_stem(process.as_str()));
+    let display_name = display_name(&path, &process);
     Ok(Some(ForegroundWindow {
         handle: handle(hwnd),
         app: AppIdentity {
@@ -83,6 +85,11 @@ pub(crate) fn window_process(hwnd: HWND) -> Option<u32> {
     // tidak valid hanya membuat fungsi ini mengembalikan 0.
     unsafe { GetWindowThreadProcessId(hwnd, Some(&raw mut pid)) };
     (pid != 0).then_some(pid)
+}
+
+/// Nama aplikasi untuk pengguna: deskripsi executable di `path`, atau nama filenya.
+pub(crate) fn display_name(path: &str, process: &ProcessName) -> String {
+    file_description(path).unwrap_or_else(|| file_stem(process.as_str()))
 }
 
 /// `FileDescription` dari metadata versi executable, misalnya "Microsoft Outlook".

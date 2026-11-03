@@ -6,6 +6,7 @@
 #![cfg(windows)]
 
 pub mod clipboard;
+pub mod foreground;
 mod hardening;
 pub mod hardware;
 pub mod hotkey;

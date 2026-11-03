@@ -63,6 +63,8 @@
         <p class="mt-0.5 truncate text-sm text-muted-foreground">
           {#if paused && current.pausedUntilMs !== null}
             Lanjut otomatis pukul {timeFormat.format(current.pausedUntilMs)}
+          {:else if current.appName}
+            Membantu di {current.appName}
           {:else}
             Siap membantu
           {/if}

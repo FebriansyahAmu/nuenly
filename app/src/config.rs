@@ -1,6 +1,7 @@
 //! Setelan yang bertahan antar-sesi, disimpan sebagai `config.json` di folder konfigurasi
 //! aplikasi. Isinya tidak pernah memuat teks pengguna.
 
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -18,6 +19,9 @@ pub struct Config {
     pub model: Option<String>,
     /// Pintasan Tanya Nuenly, misalnya `Alt+Space`; `None` berarti bawaan (Ctrl+Space).
     pub hotkey: Option<String>,
+    /// Mode pilihan pengguna per aplikasi: nama executable → ID mode, misalnya
+    /// `"klinik.exe": "medical"`. Aplikasi lain memakai mode pertama.
+    pub app_modes: BTreeMap<String, String>,
 }
 
 /// State terkelola Tauri: setelan di memori beserta lokasinya di disk.

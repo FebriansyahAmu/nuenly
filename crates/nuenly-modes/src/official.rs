@@ -55,7 +55,7 @@ mod tests {
         assert_eq!(umum.redaction, RedactionLevel::Standard);
         assert!(!umum.proactive.sticky_important);
 
-        assert!(modes.activate("medical"));
+        assert!(modes.choose("medical", None));
         let medical = modes.active().policy();
         assert!(!medical.context_preview);
         assert_eq!(medical.redaction, RedactionLevel::Strict);

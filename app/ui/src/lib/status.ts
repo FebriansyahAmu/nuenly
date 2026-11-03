@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-/** Bentuknya sama dengan `ModeInfo` di `app/src/status.rs`. */
+/** Bentuknya sama dengan `ModeView` di `app/src/status.rs`. */
 export interface ModeInfo {
   id: string;
   label: string;
@@ -12,6 +12,8 @@ export interface ModeInfo {
 export interface StatusView {
   modes: ModeInfo[];
   activeMode: string;
+  /** Aplikasi yang sedang dibantu; pilihan mode diingat untuk aplikasi ini. */
+  appName: string | null;
   /** Akhir jeda (ms sejak epoch Unix), atau `null` bila tidak dijeda. */
   pausedUntilMs: number | null;
 }
