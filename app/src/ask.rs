@@ -2,6 +2,7 @@
 //! Hotkey (F-03) membukanya dengan teks terpilih di aplikasi aktif sebagai konteks (F-02).
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use nuenly_core::{CaptureKind, CaptureOutcome, ContextError, ContextSnapshot, SensitivePage};
 use serde::Serialize;
@@ -10,7 +11,7 @@ use tokio::sync::oneshot;
 
 use crate::context::ContextReader;
 use crate::status::AppStatus;
-use crate::{foreground, onboarding};
+use crate::{foreground, logging, onboarding};
 
 pub const LABEL: &str = "ask";
 
@@ -103,6 +104,7 @@ pub enum Notice {
 /// Dipanggil setiap kali hotkey ditekan, di thread hotkey. Menekannya lagi saat Tanya Nuenly
 /// terbuka akan menutupnya.
 pub fn on_hotkey(app: &AppHandle) {
+    let pressed = Instant::now();
     let Some(window) = app.get_webview_window(LABEL) else {
         return;
     };
@@ -117,7 +119,14 @@ pub fn on_hotkey(app: &AppHandle) {
     }
     // Dibaca sebelum jendela tampil, karena setelah itu fokus sudah pindah ke Nuenly.
     let (context, open) = read_selection(app);
+    let read = pressed.elapsed();
     let _ = show(app, context, &open);
+    // Target PRD: tampil ≤ 150 ms setelah hotkey. Diukur sampai Windows menampilkan jendela.
+    tracing::info!(
+        read_ms = logging::millis(read),
+        shown_ms = logging::millis(pressed.elapsed()),
+        "Tanya Nuenly tampil setelah hotkey"
+    );
 }
 
 /// Dari menu tray. Tidak membaca apa pun, karena fokus sudah pindah ke menu.

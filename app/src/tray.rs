@@ -192,10 +192,15 @@ pub fn app_quit(app: AppHandle) {
     app.exit(0);
 }
 
+/// Jeda sebelum toast uji muncul, agar sempat kembali ke aplikasi lain dan mengetik: toast tidak
+/// boleh mengambil fokus keyboard (spike Fase 0).
+#[cfg(debug_assertions)]
+const TEST_TOAST_DELAY: Duration = Duration::from_secs(3);
+
 /// Submenu "Uji toast" hanya di build debug, untuk spike fokus dan pengecekan tampilan.
 #[cfg(debug_assertions)]
 fn test_toast_menu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
-    let submenu = Submenu::new(app, "Uji toast (dev)", true)?;
+    let submenu = Submenu::new(app, "Uji toast (dev, muncul setelah 3 detik)", true)?;
     for (name, label) in toast::demo::ALL {
         let id = format!("{}{name}", toast::demo::PREFIX);
         submenu.append(&MenuItem::with_id(app, id, label, true, None::<&str>)?)?;
@@ -209,7 +214,11 @@ fn show_test_toast(app: &AppHandle, id: &str) {
         .strip_prefix(toast::demo::PREFIX)
         .and_then(toast::demo::toast);
     if let Some(demo) = demo {
-        let _ = toast::show(app, &demo);
+        let app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(TEST_TOAST_DELAY);
+            let _ = toast::show(&app, &demo);
+        });
     }
 }
 
