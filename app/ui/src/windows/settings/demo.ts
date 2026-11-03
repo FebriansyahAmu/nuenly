@@ -17,6 +17,7 @@ const HARDWARE = { ramBytes: 8_283_000_000, vramBytes: 6 * 1024 ** 3, gpu: 'NVID
 const OLLAMA: Record<string, OllamaInfo> = {
   running: { status: 'running', version: '0.40.13', models: ['gemma3:4b', 'gemma4:e4b'], plan: null, hardware: HARDWARE },
   kosong: { status: 'running', version: '0.40.13', models: [], plan: null, hardware: HARDWARE },
+  terbuka: { status: 'exposed', version: '0.40.13', models: [], plan: null, hardware: HARDWARE },
   installed: { status: 'installed', version: null, models: [], plan: null, hardware: HARDWARE },
   missing: { status: 'missing', version: null, models: [], plan: null, hardware: HARDWARE },
 };
@@ -43,7 +44,7 @@ function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
 
 /**
  * `?halaman=general|model|privacy|connector` (bawaannya model, seperti desain 07),
- * `?ollama=running|kosong|installed|missing`, `?otomatis`, `?jeda`, `?tanpa-aplikasi`,
+ * `?ollama=running|kosong|terbuka|installed|missing`, `?otomatis`, `?jeda`, `?tanpa-aplikasi`,
  * `?pintasan=taken|failed`, dan `?tombol=<pintasan>` (misalnya `Alt+Space`).
  */
 export function demoSettings(params: URLSearchParams): SettingsState {

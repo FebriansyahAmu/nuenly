@@ -51,6 +51,7 @@ describe('modelState', () => {
     expect(modelState(null, null)).toBe('checking');
     expect(modelState(info('missing'), null)).toBe('not-installed');
     expect(modelState(info('installed'), null)).toBe('not-running');
+    expect(modelState(info('exposed'), null)).toBe('exposed');
     expect(modelState(running([]), null)).toBe('no-models');
     expect(modelState(running(['gemma3:4b']), 'gpt-oss:20b')).toBe('model-missing');
   });

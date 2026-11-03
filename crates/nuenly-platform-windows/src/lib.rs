@@ -10,6 +10,7 @@ pub mod foreground;
 mod hardening;
 pub mod hardware;
 pub mod hotkey;
+pub mod network;
 mod process;
 pub mod shell;
 mod source;

@@ -1,5 +1,11 @@
-/** Bentuknya sama dengan `OllamaStatus` di `app/src/ollama.rs`. */
-export type OllamaStatus = 'running' | 'installed' | 'missing';
+/**
+ * Bentuknya sama dengan `OllamaStatus` di `app/src/ollama.rs`. `exposed`: Ollama berjalan, tetapi
+ * juga bisa dihubungi dari jaringan, jadi Nuenly tidak memakainya.
+ */
+export type OllamaStatus = 'running' | 'exposed' | 'installed' | 'missing';
+
+/** Kalimat pembuka yang sama di semua jendela saat Ollama terbuka ke jaringan. */
+export const OLLAMA_EXPOSED = 'Ollama bisa dihubungi komputer lain di jaringan, jadi Nuenly tidak memakainya.';
 
 /** Tempat model berjalan, dari yang tercepat; sama dengan `Placement` di `nuenly-context`. */
 export type Placement = 'gpu' | 'split' | 'cpu' | 'tooLarge';
