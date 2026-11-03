@@ -21,6 +21,8 @@ serde_json.workspace = true
 tauri = { workspace = true, features = ["tray-icon"] }
 # Runtime Tauri sudah tokio; dipakai untuk menghentikan jawaban yang sedang berjalan.
 tokio = { workspace = true, features = ["macros", "sync"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 nuenly-platform-windows.workspace = true

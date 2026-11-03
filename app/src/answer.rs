@@ -1,6 +1,8 @@
 //! Jawaban Tanya Nuenly (F-22, US-1): perintah dan teks terpilih disusun `ContextAssembler`
 //! (F-08), lalu jawaban Ollama (F-10) dialirkan ke jendela sesuai rencana `ResourceProfiler`.
 
+use std::time::Instant;
+
 use nuenly_context::{AssembleError, ContextAssembler, ModelPlan, Placement};
 use nuenly_core::SensitiveText;
 use nuenly_llm::ollama::OllamaModel;
@@ -13,8 +15,8 @@ use tokio::sync::oneshot;
 use crate::ask::AskState;
 use crate::config::ConfigStore;
 use crate::hardware::{HardwareInfo, HardwareState};
-use crate::ollama;
 use crate::status::AppStatus;
+use crate::{logging, ollama};
 
 /// Batas panjang perintah, sama dengan `maxlength` kotak perintah di jendela.
 const MAX_PROMPT_CHARS: usize = 2000;
@@ -82,6 +84,7 @@ pub async fn ask_send(
     use_context: bool,
     channel: Channel<AnswerEvent>,
 ) -> Result<AskReply, AskFailure> {
+    let started = Instant::now();
     let instruction = SensitiveText::new(prompt);
     let stopped = ask.begin_answer();
     let context = ask.context(use_context);
@@ -109,12 +112,25 @@ pub async fn ask_send(
     );
     request.keep_alive = Some(plan.keep_alive);
 
+    let mut first_token = None;
     let mut on_token = |token: &str| {
+        first_token.get_or_insert_with(|| started.elapsed());
         let _ = channel.send(AnswerEvent::Token {
             text: token.to_owned(),
         });
     };
-    stream(&*provider, &request, &mut on_token, stopped).await?;
+    let result = stream(&*provider, &request, &mut on_token, stopped).await;
+    // Target PRD: token pertama ≤ 2 s (GPU 16 GB) atau ≤ 5 s (CPU, model 2–4B), dihitung dari
+    // perintah dikirim, termasuk memuat model bila belum dimuat.
+    tracing::info!(
+        model = %request.model,
+        num_ctx = request.num_ctx.get(),
+        first_token_ms = first_token.map(logging::millis),
+        total_ms = logging::millis(started.elapsed()),
+        failure = result.as_ref().err().map(tracing::field::debug),
+        "jawaban Tanya Nuenly"
+    );
+    result?;
     let _ = channel.send(AnswerEvent::End);
     Ok(AskReply { context_truncated })
 }

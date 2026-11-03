@@ -11,6 +11,7 @@ mod context;
 mod foreground;
 mod hardware;
 mod hotkey;
+mod logging;
 mod ollama;
 mod onboarding;
 mod settings;
@@ -22,6 +23,7 @@ use anyhow::Context as _;
 use tauri::{Manager, WindowEvent};
 
 fn main() -> anyhow::Result<()> {
+    logging::init();
     #[cfg(windows)]
     nuenly_platform_windows::harden_dll_search().context("gagal membatasi pencarian DLL")?;
 

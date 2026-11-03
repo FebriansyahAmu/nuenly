@@ -31,6 +31,9 @@ thiserror = "2.0.21"
 tokio = "1.54.1"
 # Hanya membaca: tanpa penulis TOML (`display`). Versi yang sama sudah dipakai build Tauri.
 toml = { version = "1.1.8", default-features = false, features = ["parse", "serde", "std"] }
+# Log diagnostik tanpa teks pengguna (ADR 0010). Tanpa makro atribut, warna ANSI, dan filter regex.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt"] }
 # `input` wajib karena uiautomation 0.25.1 tidak terkompilasi tanpanya. Aksi tulisnya
 # (klik, kirim tombol, set value) dikunci lewat disallowed-methods di clippy.toml.
 uiautomation = { version = "0.25.1", default-features = false, features = ["input", "pattern"] }
