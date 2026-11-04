@@ -114,7 +114,7 @@ impl ContextSource for UiaContextSource {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
     use std::time::Duration;
@@ -124,11 +124,16 @@ mod tests {
     use super::UiaContextSource;
 
     /// Dua klien UIA yang dibuat bersamaan di satu proses bisa gagal dengan `E_FAIL`. Aplikasi
-    /// hanya membuat satu, jadi test di sini dibuat bergiliran.
+    /// membuatnya satu per satu saat start, jadi test yang membuat klien UIA dibuat bergiliran.
     static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
+    /// Giliran membuat klien UIA, untuk test di modul mana pun.
+    pub(crate) fn uia_turn() -> MutexGuard<'static, ()> {
+        ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn spawn(timeout: Duration) -> (MutexGuard<'static, ()>, UiaContextSource) {
-        let guard = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let guard = uia_turn();
         (guard, UiaContextSource::spawn(timeout).unwrap())
     }
 

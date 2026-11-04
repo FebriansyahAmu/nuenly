@@ -15,6 +15,10 @@ Opsi:
                      dan waktu baca
   --browser          Periksa halaman browser seperti Nuenly: jendela privat, situs
                      perbankan, dan waktu periksa
+  --watch            Catat sinyal mengetik (fokus, nilai, teks, seleksi, caret) dari WinEvent
+                     dan UIA tanpa membaca isi, lalu tandai saat pengguna berhenti mengetik
+  --seconds <n>      Lama --watch dalam detik (bawaan: 60)
+  --idle-ms <n>      Diam selama ini dianggap berhenti mengetik (bawaan: 1500)
   --delay <detik>    Jeda sebelum membaca (bawaan: 3)
   --depth <n>        Kedalaman tree maksimum (bawaan: 30)
   --max-nodes <n>    Jumlah elemen maksimum (bawaan: 3000)
@@ -37,6 +41,9 @@ pub enum Command {
 pub struct Args {
     pub focused: bool,
     pub browser: bool,
+    pub watch: bool,
+    pub seconds: Duration,
+    pub idle: Duration,
     pub delay: Duration,
     pub max_depth: usize,
     pub max_nodes: usize,
@@ -49,6 +56,9 @@ impl Default for Args {
         Self {
             focused: false,
             browser: false,
+            watch: false,
+            seconds: Duration::from_secs(60),
+            idle: Duration::from_millis(1500),
             delay: Duration::from_secs(3),
             max_depth: 30,
             max_nodes: 3000,
@@ -67,6 +77,13 @@ impl Args {
                 "-h" | "--help" => return Ok(Command::Help),
                 "--focused" => parsed.focused = true,
                 "--browser" => parsed.browser = true,
+                "--watch" => parsed.watch = true,
+                "--seconds" => {
+                    parsed.seconds = Duration::from_secs(number(&mut args, "--seconds")?);
+                }
+                "--idle-ms" => {
+                    parsed.idle = Duration::from_millis(number(&mut args, "--idle-ms")?);
+                }
                 "--show-names" => parsed.show_names = true,
                 "--show-values" => parsed.show_values = true,
                 "--delay" => parsed.delay = Duration::from_secs(number(&mut args, "--delay")?),
@@ -110,6 +127,11 @@ mod tests {
         let parsed = parse(&[
             "--focused",
             "--browser",
+            "--watch",
+            "--seconds",
+            "30",
+            "--idle-ms",
+            "800",
             "--delay",
             "5",
             "--depth",
@@ -125,6 +147,9 @@ mod tests {
             Command::Run(Args {
                 focused: true,
                 browser: true,
+                watch: true,
+                seconds: Duration::from_secs(30),
+                idle: Duration::from_millis(800),
                 delay: Duration::from_secs(5),
                 max_depth: 8,
                 max_nodes: 100,

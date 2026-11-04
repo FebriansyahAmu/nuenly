@@ -36,7 +36,8 @@ tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt"] }
 # `input` wajib karena uiautomation 0.25.1 tidak terkompilasi tanpanya. Aksi tulisnya
 # (klik, kirim tombol, set value) dikunci lewat disallowed-methods di clippy.toml.
-uiautomation = { version = "0.25.1", default-features = false, features = ["input", "pattern"] }
+# `event`: handler fokus, perubahan nilai, dan perubahan teks (ADR 0012); tanpa dependensi baru.
+uiautomation = { version = "0.25.1", default-features = false, features = ["event", "input", "pattern"] }
 windows = "0.62.2"
 zeroize = "1.9.1"
 
