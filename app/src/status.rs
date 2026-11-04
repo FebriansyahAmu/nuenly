@@ -75,7 +75,7 @@ impl Status {
         self.modes.choose(id, app.as_ref())
     }
 
-    /// Mode pilihan pengguna per aplikasi, untuk disimpan di `config.json`.
+    /// Mode pilihan pengguna per aplikasi, untuk disimpan di setelan.
     pub fn remembered(&self) -> BTreeMap<String, String> {
         self.modes
             .remembered()
@@ -174,6 +174,15 @@ impl AppStatus {
     /// Prompt sistem Tanya Nuenly mode aktif.
     pub fn ask_prompt(&self) -> &'static str {
         self.lock().ask_prompt()
+    }
+
+    /// Nama executable aplikasi yang sedang dibantu dan ID mode aktif, untuk audit.
+    pub fn audit_scope(&self) -> (Option<String>, String) {
+        let status = self.lock();
+        let app = status
+            .helped_app()
+            .map(|app| app.process.as_str().to_owned());
+        (app, status.modes.active().id().as_str().to_owned())
     }
 
     /// Aplikasi di latar depan berganti. Selama dijeda Nuenly tidak mengikutinya. Hasilnya

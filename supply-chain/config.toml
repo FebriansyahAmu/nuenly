@@ -613,6 +613,11 @@ criteria = "safe-to-deploy"
 version = "0.1.25"
 criteria = "safe-to-deploy"
 
+[[exemptions.libsqlite3-sys]]
+version = "0.39.1"
+criteria = "safe-to-deploy"
+notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
+
 [[exemptions.litemap]]
 version = "0.8.3"
 criteria = "safe-to-deploy"
@@ -732,6 +737,11 @@ criteria = "safe-to-deploy"
 [[exemptions.once_cell]]
 version = "1.12.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.openssl-sys]]
+version = "0.9.118"
+criteria = "safe-to-deploy"
+notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
 
 [[exemptions.outref]]
 version = "0.5.2"
@@ -861,6 +871,11 @@ criteria = "safe-to-deploy"
 version = "0.13.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.rusqlite]]
+version = "0.41.1"
+criteria = "safe-to-deploy"
+notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
+
 [[exemptions.rustc-hash]]
 version = "2.1.3"
 criteria = "safe-to-deploy"
@@ -980,6 +995,11 @@ criteria = "safe-to-deploy"
 [[exemptions.soup3-sys]]
 version = "0.5.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.sqlcipher-src]]
+version = "419.0.6+sqlcipher-4.19.0-sqlite-3.53.4-libtomcrypt-1.18.2"
+criteria = "safe-to-deploy"
+notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
 
 [[exemptions.stable_deref_trait]]
 version = "1.2.1"
@@ -1213,10 +1233,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.walkdir]]
 version = "2.5.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.want]]
-version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasi]]

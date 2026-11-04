@@ -77,6 +77,13 @@ user-id = 539
 user-login = "cuviper"
 user-name = "Josh Stone"
 
+[[publisher.openssl-src]]
+version = "300.6.1+3.6.3"
+when = "2026-06-09"
+user-id = 1
+user-login = "alexcrichton"
+user-name = "Alex Crichton"
+
 [[publisher.proc-macro2]]
 version = "1.0.107"
 when = "2026-07-19"
@@ -372,6 +379,16 @@ who = "Benjamin Bouvier <public@benj.me>"
 criteria = "safe-to-deploy"
 delta = "0.9.0 -> 0.10.3"
 
+[[audits.bytecode-alliance.audits.fallible-iterator]]
+who = "Alex Crichton <alex@alexcrichton.com>"
+criteria = "safe-to-deploy"
+delta = "0.2.0 -> 0.3.0"
+notes = """
+This major version update has a few minor breaking changes but everything
+this crate has to do with iterators and `Result` and such. No `unsafe` or
+anything like that, all looks good.
+"""
+
 [[audits.bytecode-alliance.audits.find-msvc-tools]]
 who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
@@ -558,6 +575,23 @@ who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
 delta = "0.1.33 -> 0.1.34"
 notes = "Mostly just an update with Rust stylistic conventions changing. Nothing awry."
+
+[[audits.bytecode-alliance.audits.vcpkg]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.2.15"
+notes = "no build.rs, no macros, no unsafe. It reads the filesystem and makes copies of DLLs into OUT_DIR."
+
+[[audits.bytecode-alliance.audits.want]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.0"
+
+[[audits.bytecode-alliance.audits.want]]
+who = "Alex Crichton <alex@alexcrichton.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.0 -> 0.3.2"
+notes = "Mostly idiom-related changes, nothing major."
 
 [[audits.bytecode-alliance.audits.zeroize]]
 who = "Pat Hickey <p.hickey@f5.com>"
@@ -1158,6 +1192,18 @@ who = "Nika Layzell <nika@thelayzells.com>"
 criteria = "safe-to-deploy"
 delta = "0.3.7 -> 0.5.0"
 aggregated-from = "https://raw.githubusercontent.com/mozilla/cargo-vet/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.fallible-iterator]]
+who = "Jan-Erik Rediger <jrediger@mozilla.com>"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+aggregated-from = "https://raw.githubusercontent.com/mozilla/glean/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.fallible-streaming-iterator]]
+who = "Jan-Erik Rediger <jrediger@mozilla.com>"
+criteria = "safe-to-deploy"
+version = "0.1.9"
+aggregated-from = "https://raw.githubusercontent.com/mozilla/glean/main/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.find-msvc-tools]]
 who = "Jan-Erik Rediger <jrediger@mozilla.com>"

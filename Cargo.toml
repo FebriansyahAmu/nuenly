@@ -15,6 +15,7 @@ nuenly-core = { path = "crates/nuenly-core" }
 nuenly-llm = { path = "crates/nuenly-llm" }
 nuenly-modes = { path = "crates/nuenly-modes" }
 nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
+nuenly-store = { path = "crates/nuenly-store" }
 
 anyhow = "1.0.104"
 bytes = "1.12.1"
@@ -23,6 +24,9 @@ getrandom = "0.3.4"
 jsonschema = { version = "0.60.2", default-features = false }
 # Hanya HTTP/1 tanpa TLS dan proxy sistem; TLS menyusul bersama adapter jarak jauh (ADR 0005).
 reqwest = { version = "0.13.5", default-features = false }
+# SQLCipher dengan OpenSSL yang ikut dikompilasi, jadi tidak ada DLL OpenSSL yang dimuat dari
+# sistem (ADR 0013). Build butuh Perl; di Windows: Strawberry Perl.
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tauri = "2.12.5"
@@ -47,6 +51,9 @@ zeroize = "1.9.1"
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 unsafe_op_in_unsafe_fn = "deny"
+# OpenSSL yang ikut dikompilasi untuk SQLCipher merujuk PDB yang tidak ikut terpasang, jadi
+# linker MSVC mencetak ratusan LNK4099 untuk setiap binary yang memakai store.
+linker_messages = "allow"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

@@ -7,6 +7,7 @@
 
 pub mod activity;
 pub mod clipboard;
+pub mod dpapi;
 pub mod foreground;
 mod hardening;
 pub mod hardware;

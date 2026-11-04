@@ -1,4 +1,4 @@
-//! Jendela Pengaturan (F-27): data yang ditampilkan dan perubahan yang disimpan di `config.json`.
+//! Jendela Pengaturan (F-27): data yang ditampilkan dan perubahan yang disimpan di setelan.
 
 use nuenly_core::Shortcut;
 use serde::Serialize;

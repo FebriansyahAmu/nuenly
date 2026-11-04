@@ -32,6 +32,8 @@ pub struct Prompt {
     pub user: SensitiveText,
     /// Teks layar dipotong agar muat di `num_ctx`.
     pub context_truncated: bool,
+    /// Jumlah karakter teks layar yang ikut di prompt, untuk audit.
+    pub context_chars: usize,
 }
 
 /// Kegagalan menyusun prompt. Pesannya tidak memuat teks pengguna.
@@ -99,6 +101,7 @@ impl ContextAssembler {
                 system: self.system,
                 user: instruction.clone(),
                 context_truncated: false,
+                context_chars: 0,
             });
         };
 
@@ -132,6 +135,7 @@ impl ContextAssembler {
             system: self.system,
             user: SensitiveText::new(user),
             context_truncated: truncated,
+            context_chars: kept.chars().count(),
         })
     }
 }
@@ -208,6 +212,10 @@ mod tests {
              Rapikan jadi formal"
         );
         assert!(!prompt.context_truncated);
+        assert_eq!(
+            prompt.context_chars,
+            "rapat sintetis digeser ke kamis".len()
+        );
     }
 
     #[test]
@@ -302,6 +310,7 @@ mod tests {
             .unwrap();
 
         assert!(prompt.context_truncated);
+        assert!(prompt.context_chars > 0 && prompt.context_chars < long.len());
         let used = tokens(SYSTEM.chars().count()) + tokens(prompt.user.char_count());
         assert!(used <= 4096 - 1024 - 64, "{used} token");
         assert!(
@@ -319,6 +328,7 @@ mod tests {
             .unwrap();
         assert_eq!(prompt.user.expose(), "Apa itu SOAP?");
         assert!(!prompt.context_truncated);
+        assert_eq!(prompt.context_chars, 0);
     }
 
     #[test]
