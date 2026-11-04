@@ -10,6 +10,8 @@ mod args;
 mod dump;
 #[cfg(any(windows, test))]
 mod render;
+#[cfg(windows)]
+mod watch;
 
 use std::process::ExitCode;
 
@@ -31,7 +33,12 @@ fn main() -> ExitCode {
 
 #[cfg(windows)]
 fn run(args: &Args) -> ExitCode {
-    match dump::run(args) {
+    let result = if args.watch {
+        watch::run(args)
+    } else {
+        dump::run(args)
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("uia-dump: {err:#}");

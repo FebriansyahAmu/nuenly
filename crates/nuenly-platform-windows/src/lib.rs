@@ -5,6 +5,7 @@
 
 #![cfg(windows)]
 
+pub mod activity;
 pub mod clipboard;
 pub mod foreground;
 mod hardening;
