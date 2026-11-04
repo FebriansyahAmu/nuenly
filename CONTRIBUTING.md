@@ -71,9 +71,10 @@ Kecuali Anda menyatakan lain secara tegas, setiap kontribusi yang sengaja Anda a
 
 ## Menyiapkan lingkungan
 
-Butuh Rust (versinya dikunci di `rust-toolchain.toml`), Node 24, dan Windows 10/11 dengan WebView2.
+Butuh Rust (versinya dikunci di `rust-toolchain.toml`), Node 24, Windows 10/11 dengan WebView2, dan Perl. Perl dipakai untuk mengompilasi OpenSSL bagi database terenkripsi (SQLCipher). Di Windows, pakai Strawberry Perl; Perl bawaan Git for Windows tidak bisa. NASM tidak wajib.
 
 ```
+winget install StrawberryPerl.StrawberryPerl
 cargo install --locked cargo-deny cargo-vet tauri-cli
 corepack enable pnpm
 pnpm -C app/ui install
@@ -81,6 +82,8 @@ cargo tauri dev
 ```
 
 Bila `corepack enable` gagal karena butuh hak admin, pasang shim-nya ke folder global npm milik Anda: `corepack enable pnpm --install-directory "%APPDATA%\npm"`.
+
+Bila terminal yang sudah terbuka belum mengenal `perl` setelah dipasang, buka terminal baru, atau arahkan build ke Perl-nya: `$env:OPENSSL_SRC_PERL = "C:\Strawberry\perl\bin\perl.exe"`.
 
 ## Perintah sebelum membuka PR
 

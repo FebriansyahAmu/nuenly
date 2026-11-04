@@ -16,8 +16,11 @@ mod ollama;
 mod onboarding;
 mod settings;
 mod status;
+mod store;
 mod toast;
 mod tray;
+
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use tauri::{Manager, WindowEvent};
@@ -50,10 +53,11 @@ fn main() -> anyhow::Result<()> {
             tray::open_settings,
         ])
         .setup(|app| {
-            let config = app.path().app_config_dir()?.join(config::FILE_NAME);
-            let store = config::ConfigStore::load(config);
+            let store = store::open(&app.path().app_local_data_dir()?)?;
+            let legacy = app.path().app_config_dir()?.join(config::LEGACY_FILE);
+            let config = config::ConfigStore::load(Arc::clone(&store), &legacy);
             let mut modes = nuenly_modes::ModeManager::official()?;
-            let saved = store.get();
+            let saved = config.get();
             modes.restore(
                 saved
                     .app_modes
@@ -61,6 +65,7 @@ fn main() -> anyhow::Result<()> {
                     .map(|(app, id)| (app.as_str(), id.as_str())),
             );
             app.manage(store);
+            app.manage(config);
             app.manage(status::AppStatus::new(modes));
             app.manage(nuenly_llm::OllamaProvider::new()?);
             app.manage(context::ContextReader::new());

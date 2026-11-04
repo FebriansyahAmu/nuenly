@@ -1,5 +1,7 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+# Nama produk yang boleh ditulis tanpa backtick di dokumentasi; ".." mempertahankan daftar bawaan.
+doc-valid-idents = ["SQLCipher", ".."]
 
 # Nuenly hanya membaca aplikasi lain. Satu-satunya aksi tulis yang boleh ada adalah Ganti teks
 # (F-23) atas klik pengguna, dan titik itu wajib memakai #[allow(clippy::disallowed_methods)]

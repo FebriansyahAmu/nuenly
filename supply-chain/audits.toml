@@ -66,6 +66,13 @@ start = "2019-05-20"
 end = "2027-10-29"
 notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
 
+[[trusted.openssl-src]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-02-25"
+end = "2027-10-29"
+notes = "Sumber OpenSSL untuk SQLCipher (ADR 0013); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
 [[trusted.proc-macro2]]
 criteria = "safe-to-deploy"
 user-id = 3618 # David Tolnay (dtolnay)

@@ -38,6 +38,9 @@ exceptions = [
     { crate = "dtoa-short", allow = ["MPL-2.0"] },
     { crate = "option-ext", allow = ["MPL-2.0"] },
     { crate = "selectors", allow = ["MPL-2.0"] },
+    # Sumber SQLCipher (ADR 0013): `blessing` adalah domain publik SQLite, WTFPL milik
+    # libtomcrypt yang ikut di paket tetapi tidak dipakai di Windows. Keduanya permisif.
+    { crate = "sqlcipher-src", allow = ["blessing", "WTFPL"] },
 ]
 
 [bans]

@@ -16,7 +16,8 @@ pub const LABEL: &str = "onboarding";
 /// 2: alamat dan judul jendela browser diperiksa untuk melewati situs perbankan dan jendela
 /// privat.
 /// 3: aplikasi di latar depan dikenali terus-menerus (nama executable saja) untuk memilih mode.
-pub const PRIVACY_VERSION: u32 = 3;
+/// 4: catatan audit tanpa teks (aplikasi, mode, model) disimpan terenkripsi selama 30 hari.
+pub const PRIVACY_VERSION: u32 = 4;
 
 /// Apakah pengguna sudah menyetujui pemberitahuan privasi versi ini.
 pub fn accepted(app: &AppHandle) -> bool {

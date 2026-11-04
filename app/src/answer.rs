@@ -1,12 +1,14 @@
 //! Jawaban Tanya Nuenly (F-22, US-1): perintah dan teks terpilih disusun `ContextAssembler`
 //! (F-08), lalu jawaban Ollama (F-10) dialirkan ke jendela sesuai rencana `ResourceProfiler`.
 
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Instant, SystemTime};
 
 use nuenly_context::{AssembleError, ContextAssembler, ModelPlan, Placement};
 use nuenly_core::SensitiveText;
 use nuenly_llm::ollama::OllamaModel;
 use nuenly_llm::{ChatRequest, LlmError, LlmProvider, Message, OllamaProvider};
+use nuenly_store::{AskOutcome, AuditEntry, AuditEvent, Store};
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::Channel;
@@ -16,7 +18,7 @@ use crate::ask::AskState;
 use crate::config::ConfigStore;
 use crate::hardware::{HardwareInfo, HardwareState};
 use crate::status::AppStatus;
-use crate::{logging, ollama};
+use crate::{logging, ollama, store};
 
 /// Batas panjang perintah, sama dengan `maxlength` kotak perintah di jendela.
 const MAX_PROMPT_CHARS: usize = 2000;
@@ -73,13 +75,14 @@ impl From<LlmError> for AskFailure {
 }
 
 /// Menjawab perintah dari jendela Tanya Nuenly dengan prompt sistem mode aktif. Token dikirim
-/// lewat `channel` begitu tiba.
+/// lewat `channel` begitu tiba. Setiap pengiriman ke model dicatat di audit tanpa teksnya.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Setiap state Tauri adalah argumen tersendiri.
 pub async fn ask_send(
     provider: State<'_, OllamaProvider>,
     hardware: State<'_, HardwareState>,
-    store: State<'_, ConfigStore>,
+    config: State<'_, ConfigStore>,
+    audit: State<'_, Arc<Store>>,
     status: State<'_, AppStatus>,
     ask: State<'_, AskState>,
     prompt: String,
@@ -101,8 +104,9 @@ pub async fn ask_send(
         return Err(AskFailure::OllamaExposed);
     }
     let models = ollama::local_models(&provider).await?;
-    let preferred = store.get().model;
+    let preferred = config.get().model;
     let plan = choose(&hardware.get().await, &models, preferred.as_deref())?;
+    let (app, mode) = status.audit_scope();
     let prompt = ContextAssembler::new(status.ask_prompt())
         .assemble(plan.num_ctx, &instruction, context.as_ref())
         .map_err(|err| match err {
@@ -110,6 +114,7 @@ pub async fn ask_send(
             _ => AskFailure::Failed,
         })?;
     let context_truncated = prompt.context_truncated;
+    let context_chars = u32::try_from(prompt.context_chars).unwrap_or(u32::MAX);
     let mut request = ChatRequest::new(
         plan.model,
         plan.num_ctx,
@@ -124,7 +129,21 @@ pub async fn ask_send(
             text: token.to_owned(),
         });
     };
+    let sent_at = SystemTime::now();
     let result = stream(&*provider, &request, &mut on_token, stopped).await;
+    store::record(
+        &audit,
+        AuditEntry {
+            at: sent_at,
+            app,
+            mode,
+            event: AuditEvent::Ask {
+                model: request.model.clone(),
+                context_chars,
+                outcome: outcome(result.err()),
+            },
+        },
+    );
     // Target PRD: token pertama ≤ 2 s (GPU 16 GB) atau ≤ 5 s (CPU, model 2–4B), dihitung dari
     // perintah dikirim, termasuk memuat model bila belum dimuat.
     tracing::info!(
@@ -138,6 +157,16 @@ pub async fn ask_send(
     result?;
     let _ = channel.send(AnswerEvent::End);
     Ok(AskReply { context_truncated })
+}
+
+/// Hasil pengiriman untuk audit. Setelah permintaan terkirim, teks bisa sudah sampai ke model
+/// meskipun jawabannya gagal.
+fn outcome(failure: Option<AskFailure>) -> AskOutcome {
+    match failure {
+        None => AskOutcome::Answered,
+        Some(AskFailure::Cancelled) => AskOutcome::Stopped,
+        Some(_) => AskOutcome::Failed,
+    }
 }
 
 /// Model untuk menjawab: pilihan pengguna, atau pilihan `ResourceProfiler` bila otomatis.
@@ -189,7 +218,9 @@ mod tests {
     use nuenly_modes::ModeManager;
     use tokio::sync::oneshot;
 
-    use super::{AnswerEvent, AskFailure, choose, stream};
+    use nuenly_store::AskOutcome;
+
+    use super::{AnswerEvent, AskFailure, choose, outcome, stream};
     use crate::hardware::HardwareInfo;
 
     const GIB: u64 = 1024 * 1024 * 1024;
@@ -409,6 +440,13 @@ mod tests {
             serde_json::to_value(AskFailure::OllamaNotRunning).unwrap(),
             "ollamaNotRunning"
         );
+    }
+
+    #[test]
+    fn audit_tells_stopped_answers_from_failed_ones() {
+        assert_eq!(outcome(None), AskOutcome::Answered);
+        assert_eq!(outcome(Some(AskFailure::Cancelled)), AskOutcome::Stopped);
+        assert_eq!(outcome(Some(AskFailure::Timeout)), AskOutcome::Failed);
     }
 
     #[test]
