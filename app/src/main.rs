@@ -18,6 +18,7 @@ mod onboarding;
 mod settings;
 mod status;
 mod store;
+mod suggest;
 mod toast;
 mod tray;
 

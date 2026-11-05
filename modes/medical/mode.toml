@@ -1,7 +1,7 @@
 # Mode pack resmi nuenly-medical: mode Medical untuk aplikasi klinis.
 #
 # Untuk sementara hanya kebijakan dan prompt Tanya Nuenly yang hati-hati. Saran kelengkapan
-# dokumentasi, schema output, dan kamus label menyusul di Fase 3.
+# dokumentasi (prompt dan schema saran) dan kamus label menyusul di Fase 3.
 
 id = "medical"
 label = "Medical"
@@ -14,5 +14,7 @@ context_preview = false
 redaction = "strict"
 
 [policy.proactive]
+# Belum ada saran proaktif sampai saran kelengkapan dokumentasi selesai (Fase 3).
+enabled = false
 # Saran penting tetap tampil sampai ditutup pengguna.
 sticky_important = true

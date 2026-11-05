@@ -4,6 +4,10 @@ use std::fmt;
 
 use zeroize::Zeroizing;
 
+/// Awalan nama tag pembungkus teks layar di prompt, diikuti ID acak per permintaan. Prompt sistem
+/// setiap mode wajib menyebutnya agar model tahu isi tag itu data, bukan perintah.
+pub const TAG_PREFIX: &str = "layar-";
+
 /// Teks yang berasal dari aplikasi lain: isi field, teks terpilih, judul jendela, atau label.
 ///
 /// Isinya tidak pernah tampil lewat `Debug`, dan tipe ini sengaja tidak mengimplementasikan

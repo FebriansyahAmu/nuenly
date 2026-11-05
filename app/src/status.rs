@@ -6,7 +6,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nuenly_core::{ActivePolicy, AppIdentity};
-use nuenly_modes::ModeManager;
+use nuenly_modes::{ModeManager, SuggestSpec};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -111,6 +111,15 @@ impl Status {
         self.modes.active().ask_prompt()
     }
 
+    /// Prompt dan schema saran proaktif mode aktif, atau `None` bila mode ini tidak memberi saran.
+    #[cfg_attr(not(debug_assertions), allow(dead_code))] // Lihat `crate::suggest`.
+    pub fn suggest_spec(&self) -> Option<SuggestSpec> {
+        let pack = self.modes.active();
+        pack.suggest()
+            .filter(|_| pack.policy().proactive.enabled)
+            .cloned()
+    }
+
     /// Akhir jeda dalam milidetik sejak epoch Unix; jeda yang sudah lewat dianggap selesai.
     fn paused_until_ms(&self, now: SystemTime) -> Option<u64> {
         self.paused_until
@@ -174,6 +183,12 @@ impl AppStatus {
     /// Prompt sistem Tanya Nuenly mode aktif.
     pub fn ask_prompt(&self) -> &'static str {
         self.lock().ask_prompt()
+    }
+
+    /// Prompt dan schema saran proaktif mode aktif, atau `None` bila mode ini tidak memberi saran.
+    #[cfg_attr(not(debug_assertions), allow(dead_code))] // Lihat `crate::suggest`.
+    pub fn suggest_spec(&self) -> Option<SuggestSpec> {
+        self.lock().suggest_spec()
     }
 
     /// Nama executable aplikasi yang sedang dibantu dan ID mode aktif, untuk audit.
@@ -388,6 +403,7 @@ mod tests {
         let mut status = status();
         let umum_prompt = status.ask_prompt();
         assert!(status.policy().context_preview);
+        assert!(status.suggest_spec().is_some());
 
         assert!(status.set_mode("medical"));
         assert!(!status.set_mode("tidak-ada"));
@@ -395,6 +411,8 @@ mod tests {
         assert_eq!(status.policy().mode.as_str(), "medical");
         assert!(!status.policy().context_preview);
         assert_ne!(status.ask_prompt(), umum_prompt);
+        // Medical belum memberi saran proaktif sampai Fase 3.
+        assert_eq!(status.suggest_spec(), None);
         // Tanpa aplikasi yang sedang dibantu, pilihannya tidak diingat untuk siapa pun.
         assert_eq!(status.remembered(), BTreeMap::new());
     }

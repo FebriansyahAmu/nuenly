@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "suggest": { "type": "boolean" },
+    "title": { "type": "string", "maxLength": 120 },
+    "body": { "type": "string", "maxLength": 300 },
+    "points": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 300 },
+      "maxItems": 3
+    },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+  },
+  "required": ["suggest", "title", "body", "points", "confidence"],
+  "additionalProperties": false
+}

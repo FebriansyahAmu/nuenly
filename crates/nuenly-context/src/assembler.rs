@@ -4,7 +4,7 @@
 
 use std::num::NonZeroU32;
 
-use nuenly_core::{ContextSnapshot, SensitiveText};
+use nuenly_core::{ContextSnapshot, SensitiveText, TAG_PREFIX};
 
 /// Perkiraan kasar karakter per token. Tokenizer model modern rata-rata 3,5–4 karakter per token
 /// untuk teks Indonesia dan Inggris. Angka ini sengaja lebih kecil agar perkiraannya boros,
@@ -18,10 +18,6 @@ const TEMPLATE_OVERHEAD: usize = 64;
 const MAX_APP_NAME: usize = 64;
 /// Berapa kali ID tag diacak ulang bila kebetulan muncul di teks layar.
 const TAG_ATTEMPTS: usize = 4;
-
-/// Awalan nama tag pembungkus teks layar. Prompt sistem setiap mode wajib menyebutnya agar model
-/// tahu isi tag itu data, bukan perintah.
-pub const TAG_PREFIX: &str = "layar-";
 
 /// Prompt yang siap dikirim ke model.
 #[derive(Debug)]

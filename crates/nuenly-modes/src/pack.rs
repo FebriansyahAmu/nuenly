@@ -1,10 +1,11 @@
-//! Satu mode pack: manifest `mode.toml` dan prompt di `prompts/`.
+//! Satu mode pack: manifest `mode.toml`, prompt di `prompts/`, dan schema output di `schemas/`.
 
 use std::ops::RangeInclusive;
 use std::time::Duration;
 
 use nuenly_core::{ActivePolicy, AppFilter, ModeId, ProactivePolicy, ProcessName, RedactionLevel};
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::error::{ModeError, invalid};
 
@@ -16,6 +17,62 @@ const MAX_PROMPT_CHARS: usize = 4000;
 const MAX_SUGGESTIONS_PER_HOUR: u32 = 60;
 const TOAST_TIMEOUT_SECS: RangeInclusive<u64> = 1..=120;
 
+const ASK_PROMPT_FILE: &str = "prompts/ask.txt";
+const SUGGEST_PROMPT_FILE: &str = "prompts/suggest.txt";
+const SUGGEST_SCHEMA_FILE: &str = "schemas/suggest.json";
+
+/// Isi berkas mode pack selain `mode.toml`. Nama berkasnya tetap, jadi tidak ditulis di
+/// manifest.
+#[derive(Clone, Copy, Debug)]
+pub struct PackFiles {
+    /// `prompts/ask.txt`: prompt sistem Tanya Nuenly.
+    pub ask: &'static str,
+    /// Berkas saran proaktif; wajib bila saran proaktif aktif.
+    pub suggest: Option<SuggestFiles>,
+}
+
+/// Berkas saran proaktif (US-2).
+#[derive(Clone, Copy, Debug)]
+pub struct SuggestFiles {
+    /// `prompts/suggest.txt`: prompt sistem pemeriksa saran.
+    pub prompt: &'static str,
+    /// `schemas/suggest.json`: JSON schema output pemeriksa saran.
+    pub schema: &'static str,
+}
+
+/// Saran proaktif sebuah mode: prompt sistem dan JSON schema output.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SuggestSpec {
+    prompt: &'static str,
+    schema: Value,
+}
+
+impl SuggestSpec {
+    fn parse(files: SuggestFiles) -> Result<Self, ModeError> {
+        let schema: Value =
+            serde_json::from_str(files.schema).map_err(|_| invalid(SUGGEST_SCHEMA_FILE))?;
+        if schema.get("type").and_then(Value::as_str) != Some("object") {
+            return Err(invalid(SUGGEST_SCHEMA_FILE));
+        }
+        Ok(Self {
+            prompt: prompt(files.prompt, SUGGEST_PROMPT_FILE)?,
+            schema,
+        })
+    }
+
+    /// Prompt sistem pemeriksa saran. Statis, tanpa nilai dinamis, agar prefix cache terpakai.
+    #[must_use]
+    pub fn prompt(&self) -> &'static str {
+        self.prompt
+    }
+
+    /// JSON schema output: dikirim ke model sebagai `format`, lalu dipakai memvalidasi jawaban.
+    #[must_use]
+    pub fn schema(&self) -> &Value {
+        &self.schema
+    }
+}
+
 /// Satu mode: label dan warna aksen untuk UI, kebijakan, dan prompt.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModePack {
@@ -23,11 +80,12 @@ pub struct ModePack {
     accent: String,
     policy: ActivePolicy,
     ask_prompt: &'static str,
+    suggest: Option<SuggestSpec>,
 }
 
 impl ModePack {
-    /// Membaca mode pack dari isi `mode.toml` dan `prompts/ask.txt`. Kebijakan yang tidak
-    /// ditulis memakai bawaan [`ActivePolicy::new`].
+    /// Membaca mode pack dari isi `mode.toml` dan berkas lainnya. Kebijakan yang tidak ditulis
+    /// memakai bawaan [`ActivePolicy::new`].
     ///
     /// Field yang tidak dikenal ditolak agar salah ketik tidak diam-diam jatuh ke nilai bawaan.
     /// Tujuan kirim teks (`egress`) sengaja tidak bisa diatur mode pack: selalu hanya model lokal
@@ -36,8 +94,8 @@ impl ModePack {
     /// # Errors
     ///
     /// [`ModeError::Manifest`] bila `manifest` tidak sesuai format, atau [`ModeError::Invalid`]
-    /// bila ada nilai di luar batas.
-    pub fn parse(manifest: &str, ask_prompt: &'static str) -> Result<Self, ModeError> {
+    /// bila ada nilai di luar batas, atau bila saran proaktif aktif tanpa berkas sarannya.
+    pub fn parse(manifest: &str, files: PackFiles) -> Result<Self, ModeError> {
         let manifest: Manifest = toml::from_str(manifest)
             .map_err(|err| ModeError::Manifest(err.message().to_owned()))?;
         let section = manifest.policy;
@@ -53,12 +111,17 @@ impl ModePack {
             block: processes(&section.apps.block)?,
         };
         policy.proactive = section.proactive.policy()?;
+        let suggest = files.suggest.map(SuggestSpec::parse).transpose()?;
+        if policy.proactive.enabled && suggest.is_none() {
+            return Err(invalid(SUGGEST_PROMPT_FILE));
+        }
 
         Ok(Self {
             label: label(&manifest.label)?,
             accent: accent(&manifest.accent)?,
             policy,
-            ask_prompt: prompt(ask_prompt)?,
+            ask_prompt: prompt(files.ask, ASK_PROMPT_FILE)?,
+            suggest,
         })
     }
 
@@ -88,6 +151,13 @@ impl ModePack {
     #[must_use]
     pub fn ask_prompt(&self) -> &'static str {
         self.ask_prompt
+    }
+
+    /// Prompt dan schema saran proaktif, bila mode pack menyediakannya. Apakah saran boleh tampil
+    /// tetap diatur [`ProactivePolicy`](nuenly_core::ProactivePolicy).
+    #[must_use]
+    pub fn suggest(&self) -> Option<&SuggestSpec> {
+        self.suggest.as_ref()
     }
 }
 
@@ -184,10 +254,10 @@ fn accent(raw: &str) -> Result<String, ModeError> {
     }
 }
 
-fn prompt(raw: &'static str) -> Result<&'static str, ModeError> {
+fn prompt(raw: &'static str, file: &'static str) -> Result<&'static str, ModeError> {
     let prompt = raw.trim();
     if prompt.is_empty() || prompt.chars().count() > MAX_PROMPT_CHARS {
-        return Err(invalid("prompts/ask.txt"));
+        return Err(invalid(file));
     }
     Ok(prompt)
 }
@@ -204,14 +274,40 @@ mod tests {
     use std::time::Duration;
 
     use nuenly_core::{ActivePolicy, Egress, ModeId, ProcessName, RedactionLevel};
+    use serde_json::json;
 
-    use super::ModePack;
+    use super::{ModePack, PackFiles, SuggestFiles};
     use crate::ModeError;
 
     const PROMPT: &str = "Kamu asisten uji. Teks layar ada di tag \"layar-\".";
+    const SUGGEST: &str = "Kamu pemeriksa uji. Teks layar ada di tag \"layar-\".";
+    const SCHEMA: &str = r#"{ "type": "object", "required": ["suggest"] }"#;
 
     fn manifest(policy: &str) -> String {
         format!("id = \"uji\"\nlabel = \"Uji\"\naccent = \"#123ABC\"\n{policy}")
+    }
+
+    /// Berkas lengkap dengan prompt Tanya Nuenly `ask`.
+    fn files(ask: &'static str) -> PackFiles {
+        PackFiles {
+            ask,
+            suggest: Some(SuggestFiles {
+                prompt: SUGGEST,
+                schema: SCHEMA,
+            }),
+        }
+    }
+
+    fn parse(manifest: &str) -> Result<ModePack, ModeError> {
+        ModePack::parse(manifest, files(PROMPT))
+    }
+
+    fn with_suggest(prompt: &'static str, schema: &'static str) -> Result<ModePack, ModeError> {
+        let files = PackFiles {
+            suggest: Some(SuggestFiles { prompt, schema }),
+            ..files(PROMPT)
+        };
+        ModePack::parse(&manifest(""), files)
     }
 
     fn invalid(field: &'static str) -> Result<ModePack, ModeError> {
@@ -220,7 +316,7 @@ mod tests {
 
     #[test]
     fn missing_policy_uses_safe_defaults() {
-        let pack = ModePack::parse(&manifest(""), PROMPT).unwrap();
+        let pack = parse(&manifest("")).unwrap();
         assert_eq!(pack.id().as_str(), "uji");
         assert_eq!(pack.label(), "Uji");
         assert_eq!(pack.accent(), "#123abc");
@@ -233,22 +329,19 @@ mod tests {
 
     #[test]
     fn reads_every_policy_field() {
-        let pack = ModePack::parse(
-            &manifest(
-                "[policy]\n\
-                 context_preview = true\n\
-                 redaction = \"strict\"\n\
-                 [policy.apps]\n\
-                 allow = [\"AplikasiKlinik.exe\"]\n\
-                 block = [\"game.exe\"]\n\
-                 [policy.proactive]\n\
-                 enabled = false\n\
-                 max_per_hour = 3\n\
-                 toast_timeout_secs = 12\n\
-                 sticky_important = true\n",
-            ),
-            PROMPT,
-        )
+        let pack = parse(&manifest(
+            "[policy]\n\
+             context_preview = true\n\
+             redaction = \"strict\"\n\
+             [policy.apps]\n\
+             allow = [\"AplikasiKlinik.exe\"]\n\
+             block = [\"game.exe\"]\n\
+             [policy.proactive]\n\
+             enabled = false\n\
+             max_per_hour = 3\n\
+             toast_timeout_secs = 12\n\
+             sticky_important = true\n",
+        ))
         .unwrap();
         let policy = pack.policy();
         assert!(policy.context_preview);
@@ -273,15 +366,12 @@ mod tests {
             "warna = \"merah\"\n",
         ] {
             assert!(matches!(
-                ModePack::parse(&manifest(policy), PROMPT),
+                parse(&manifest(policy)),
                 Err(ModeError::Manifest(_))
             ));
         }
         assert_eq!(
-            ModePack::parse(&manifest(""), PROMPT)
-                .unwrap()
-                .policy()
-                .egress,
+            parse(&manifest("")).unwrap().policy().egress,
             Egress::LocalOnly
         );
     }
@@ -289,18 +379,17 @@ mod tests {
     #[test]
     fn required_fields_and_formats_are_checked() {
         assert!(matches!(
-            ModePack::parse("id = \"uji\"\nlabel = \"Uji\"\n", PROMPT),
+            parse("id = \"uji\"\nlabel = \"Uji\"\n"),
             Err(ModeError::Manifest(_))
         ));
         assert!(matches!(
-            ModePack::parse(&manifest("[policy]\nredaction = \"longgar\"\n"), PROMPT),
+            parse(&manifest("[policy]\nredaction = \"longgar\"\n")),
             Err(ModeError::Manifest(_))
         ));
         let with = |id: &str, label: &str, accent: &str| {
-            ModePack::parse(
-                &format!("id = \"{id}\"\nlabel = \"{label}\"\naccent = \"{accent}\"\n"),
-                PROMPT,
-            )
+            parse(&format!(
+                "id = \"{id}\"\nlabel = \"{label}\"\naccent = \"{accent}\"\n"
+            ))
         };
         assert_eq!(with("Umum", "Umum", "#4f46e5"), invalid("id"));
         assert_eq!(with("uji", "  ", "#4f46e5"), invalid("label"));
@@ -321,7 +410,7 @@ mod tests {
             "[policy.proactive]\ntoast_timeout_secs = 121\n",
         ] {
             assert!(matches!(
-                ModePack::parse(&manifest(policy), PROMPT),
+                parse(&manifest(policy)),
                 Err(ModeError::Invalid { .. })
             ));
         }
@@ -329,16 +418,54 @@ mod tests {
 
     #[test]
     fn prompt_is_trimmed_and_bounded() {
-        let pack = ModePack::parse(&manifest(""), "\n  Kamu asisten uji.\n\n").unwrap();
+        let pack = ModePack::parse(&manifest(""), files("\n  Kamu asisten uji.\n\n")).unwrap();
         assert_eq!(pack.ask_prompt(), "Kamu asisten uji.");
         assert_eq!(
-            ModePack::parse(&manifest(""), " \n "),
+            ModePack::parse(&manifest(""), files(" \n ")),
             invalid("prompts/ask.txt")
         );
         let long: &'static str = "a".repeat(4001).leak();
         assert_eq!(
-            ModePack::parse(&manifest(""), long),
+            ModePack::parse(&manifest(""), files(long)),
             invalid("prompts/ask.txt")
         );
+    }
+
+    #[test]
+    fn suggestions_come_with_their_prompt_and_schema() {
+        let pack = with_suggest("\n Kamu pemeriksa uji.\n", SCHEMA).unwrap();
+        let suggest = pack.suggest().unwrap();
+        assert_eq!(suggest.prompt(), "Kamu pemeriksa uji.");
+        assert_eq!(
+            *suggest.schema(),
+            json!({ "type": "object", "required": ["suggest"] })
+        );
+    }
+
+    #[test]
+    fn active_suggestions_need_their_files() {
+        let without = PackFiles {
+            ask: PROMPT,
+            suggest: None,
+        };
+        assert_eq!(
+            ModePack::parse(&manifest(""), without),
+            invalid("prompts/suggest.txt")
+        );
+        let off =
+            ModePack::parse(&manifest("[policy.proactive]\nenabled = false\n"), without).unwrap();
+        assert_eq!(off.suggest(), None);
+    }
+
+    #[test]
+    fn suggest_files_are_checked() {
+        assert_eq!(with_suggest(" ", SCHEMA), invalid("prompts/suggest.txt"));
+        for schema in ["", "{ \"type\": ", "[]", r#"{ "type": "array" }"#, "{}"] {
+            assert_eq!(
+                with_suggest(SUGGEST, schema),
+                invalid("schemas/suggest.json"),
+                "{schema}"
+            );
+        }
     }
 }

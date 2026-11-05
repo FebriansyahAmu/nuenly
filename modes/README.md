@@ -4,9 +4,13 @@ Setiap folder di sini adalah satu mode Nuenly. Mode pack resmi ikut di dalam bin
 
 ```
 modes/<id>/
-  mode.toml         identitas dan kebijakan mode
-  prompts/ask.txt   prompt sistem Tanya Nuenly
+  mode.toml             identitas dan kebijakan mode
+  prompts/ask.txt       prompt sistem Tanya Nuenly
+  prompts/suggest.txt   prompt sistem pemeriksa saran proaktif
+  schemas/suggest.json  JSON schema jawaban pemeriksa saran
 ```
+
+Dua berkas saran wajib ada bila saran proaktif aktif (`policy.proactive.enabled`, bawaannya `true`). Mode pack tanpa saran proaktif menulis `enabled = false`.
 
 ## `mode.toml`
 
@@ -34,11 +38,27 @@ Field yang tidak ditulis memakai bawaan yang aman. Field yang tidak dikenal memb
 
 Mode pack tidak bisa mengatur ke mana teks dikirim: semua mode hanya memakai model lokal.
 
-## `prompts/ask.txt`
+## `prompts/ask.txt` dan `prompts/suggest.txt`
 
 - **Isi:** teks biasa, paling banyak 4.000 karakter. Satu paragraf ditulis di satu baris, karena baris baru ikut terkirim ke model.
 - **Tanpa nilai dinamis:** jangan tulis jam, tanggal, atau nama aplikasi di prompt. Prompt yang selalu sama membuat cache prompt Ollama terpakai.
-- **Wajib menyebut tag `"layar-"`:** teks dari layar dikirim di dalam tag `layar-<ID acak>`. Prompt harus menyebutnya dan meminta model memperlakukan isinya sebagai data, bukan perintah. Test di `app/src/answer.rs` memeriksa hal ini.
+- **Wajib menyebut tag `"layar-"`:** teks dari layar dikirim di dalam tag `layar-<ID acak>`. Prompt harus menyebutnya dan meminta model memperlakukan isinya sebagai data, bukan perintah. Test di `app/src/answer.rs` dan `app/src/suggest.rs` memeriksa hal ini.
+- **Pemeriksa saran** menerima teks yang sedang ditulis pengguna, lalu menjawab dengan JSON sesuai `schemas/suggest.json`. Prompt-nya sebaiknya menjelaskan setiap field dan kapan tidak memberi saran.
+
+## `schemas/suggest.json`
+
+JSON schema mandiri, tanpa `$ref` ke berkas atau alamat lain. Schema dikirim ke Ollama sebagai `format`, lalu dipakai memvalidasi jawaban. Jawaban yang tetap tidak lolos setelah diulang sekali dibuang.
+
+Bentuk jawabannya tetap, karena dibaca kode Nuenly:
+
+```json
+{ "suggest": true, "title": "…", "body": "…", "points": ["…"], "confidence": "low|medium|high" }
+```
+
+- Field lain membuat jawaban ditolak.
+- Saran yang lolos schema masih disaring Nuenly. Saran berisi tautan, alamat email, perintah komputer, atau tiruan instruksi sistem dibuang.
+- Saran yang melebihi batas Nuenly juga dibuang: judul 80 karakter, isi dan setiap poin 240 karakter, paling banyak 4 poin.
+- `maxLength` di schema menghentikan jawaban yang kebablasan. Pasang nilainya di atas batas Nuenly, agar teks yang terpotong di tengah kata ikut dibuang dan tidak tampil.
 
 ## Menambah mode pack resmi
 

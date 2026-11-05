@@ -1,25 +1,34 @@
 //! Mode pack resmi dari folder `modes/`. Isinya ikut di dalam binary, jadi selalu tersedia dan
 //! tidak berubah tanpa mengganti binary (ADR 0008).
 
-use crate::{ModeError, ModePack};
+use crate::{ModeError, ModePack, PackFiles, SuggestFiles};
 
-/// Isi `mode.toml` dan `prompts/ask.txt` tiap mode pack resmi, dalam urutan tampil di UI. Yang
-/// pertama adalah mode awal.
-const OFFICIAL: [(&str, &str); 2] = [
+/// Isi berkas tiap mode pack resmi, dalam urutan tampil di UI. Yang pertama adalah mode awal.
+const OFFICIAL: [(&str, PackFiles); 2] = [
     (
         include_str!("../../../modes/all/mode.toml"),
-        include_str!("../../../modes/all/prompts/ask.txt"),
+        PackFiles {
+            ask: include_str!("../../../modes/all/prompts/ask.txt"),
+            suggest: Some(SuggestFiles {
+                prompt: include_str!("../../../modes/all/prompts/suggest.txt"),
+                schema: include_str!("../../../modes/all/schemas/suggest.json"),
+            }),
+        },
     ),
     (
         include_str!("../../../modes/medical/mode.toml"),
-        include_str!("../../../modes/medical/prompts/ask.txt"),
+        // Saran kelengkapan dokumentasi menyusul di Fase 3.
+        PackFiles {
+            ask: include_str!("../../../modes/medical/prompts/ask.txt"),
+            suggest: None,
+        },
     ),
 ];
 
 pub(crate) fn packs() -> Result<Vec<ModePack>, ModeError> {
     OFFICIAL
         .iter()
-        .map(|(manifest, ask)| ModePack::parse(manifest, ask))
+        .map(|(manifest, files)| ModePack::parse(manifest, *files))
         .collect()
 }
 
@@ -70,6 +79,20 @@ mod tests {
             assert_eq!(policy.apps.allow, None);
             // Berkas dibuka dengan akhir baris LF (.gitattributes); CR akan ikut terkirim ke model.
             assert!(!pack.ask_prompt().contains('\r'));
+            if let Some(suggest) = pack.suggest() {
+                assert!(!suggest.prompt().contains('\r'));
+            }
         }
+    }
+
+    #[test]
+    fn umum_suggests_and_medical_waits_for_phase_3() {
+        let mut modes = ModeManager::official().unwrap();
+        assert!(modes.active().policy().proactive.enabled);
+        assert!(modes.active().suggest().is_some());
+
+        assert!(modes.choose("medical", None));
+        assert!(!modes.active().policy().proactive.enabled);
+        assert_eq!(modes.active().suggest(), None);
     }
 }
