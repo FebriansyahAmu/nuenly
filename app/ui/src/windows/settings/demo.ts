@@ -3,7 +3,7 @@
 import type { OllamaInfo } from '$lib/ollama';
 import type { StatusView } from '$lib/status';
 
-import type { SettingsBackend, SettingsView } from './backend';
+import type { AuditItem, SettingsBackend, SettingsView } from './backend';
 import { PAGES, SettingsState } from './settings.svelte';
 
 const MODES = [
@@ -21,6 +21,21 @@ const OLLAMA: Record<string, OllamaInfo> = {
   installed: { status: 'installed', version: null, models: [], plan: null, hardware: HARDWARE },
   missing: { status: 'missing', version: null, models: [], plan: null, hardware: HARDWARE },
 };
+
+/** Riwayat sintetis: Tanya Nuenly di beberapa aplikasi, terbaru lebih dulu, tiap 47 menit. */
+function demoActivity(): AuditItem[] {
+  const apps = ['notepad.exe', 'winword.exe', 'chrome.exe', null, 'klinik-dummy.exe'];
+  const outcomes = ['answered', 'answered', 'stopped', 'answered', 'failed'] as const;
+  return Array.from({ length: 14 }, (_, index) => ({
+    kind: 'ask' as const,
+    atMs: Date.now() - index * 47 * 60 * 1000,
+    app: apps[index % apps.length] ?? null,
+    mode: index % apps.length === 4 ? 'medical' : 'all',
+    model: 'gemma3:4b',
+    contextChars: index % 3 === 0 ? 0 : 180 * index,
+    outcome: outcomes[index % outcomes.length] ?? 'answered',
+  }));
+}
 
 /** Meniru `ResourceProfiler` untuk PC pengembang: gemma3:4b muat di GPU, gemma4:e4b tidak. */
 function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
@@ -45,7 +60,8 @@ function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
 /**
  * `?halaman=general|model|privacy|connector` (bawaannya model, seperti desain 07),
  * `?ollama=running|kosong|terbuka|installed|missing`, `?otomatis`, `?jeda`, `?tanpa-aplikasi`,
- * `?pintasan=taken|failed`, dan `?tombol=<pintasan>` (misalnya `Alt+Space`).
+ * `?pintasan=taken|failed`, `?tombol=<pintasan>` (misalnya `Alt+Space`), dan
+ * `?riwayat=kosong|gagal`.
  */
 export function demoSettings(params: URLSearchParams): SettingsState {
   const hotkeyStatus = params.get('pintasan');
@@ -63,6 +79,7 @@ export function demoSettings(params: URLSearchParams): SettingsState {
     pausedUntilMs: params.has('jeda') ? Date.now() + 15 * 60 * 1000 : null,
   };
   const ollama = OLLAMA[params.get('ollama') ?? 'running'] ?? OLLAMA.running;
+  let activity = params.get('riwayat') === 'kosong' ? [] : demoActivity();
   const updateStatus = (change: Partial<StatusView>) => Promise.resolve((status = { ...status, ...change }));
   const backend: SettingsBackend = {
     setModel: (model) => Promise.resolve((settings = { ...settings, model })),
@@ -76,6 +93,8 @@ export function demoSettings(params: URLSearchParams): SettingsState {
     setMode: (id) => updateStatus({ activeMode: id }),
     pause: () => updateStatus({ pausedUntilMs: Date.now() + 15 * 60 * 1000 }),
     resume: () => updateStatus({ pausedUntilMs: null }),
+    listActivity: () => (params.get('riwayat') === 'gagal' ? Promise.reject('gagal') : Promise.resolve(activity)),
+    clearActivity: () => Promise.resolve(void (activity = [])),
   };
 
   const state = new SettingsState(backend, settings, status);

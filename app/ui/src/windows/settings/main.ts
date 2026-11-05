@@ -30,10 +30,13 @@ if (target && import.meta.env.DEV && !isTauri()) {
   mount(App, { target, props: { state } });
   // Mode dan jeda bisa berubah dari tray; aksen mode ikut dipasang.
   void watchStatus((next) => (state.status = next));
-  // Jendela ini disembunyikan, bukan ditutup; periksa Ollama lagi setiap kali dibuka.
+  // Jendela ini disembunyikan, bukan ditutup; periksa Ollama dan riwayat lagi setiap kali dibuka.
   void getCurrentWindow().onFocusChanged(({ payload: focused }) => {
     if (focused) {
       void state.checkOllama();
+      if (state.page === 'privacy') {
+        void state.loadActivity();
+      }
     }
   });
 }
