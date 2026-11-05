@@ -1,7 +1,7 @@
 import type { OllamaInfo } from '$lib/ollama';
 import type { StatusView } from '$lib/status';
 
-import type { HotkeyFailure, SettingsBackend, SettingsView } from './backend';
+import type { AuditItem, HotkeyFailure, SettingsBackend, SettingsView } from './backend';
 
 export const PAGES = [
   { id: 'general', label: 'Umum', subtitle: 'Mode dan pintasan keyboard.' },
@@ -72,6 +72,7 @@ export function hotkeyError(error: unknown): string {
 
 const MODEL_ERROR = 'Pilihan model tidak bisa disimpan. Coba lagi.';
 const DOWNLOAD_ERROR = 'Halaman unduhan tidak bisa dibuka. Buka ollama.com/download di browser.';
+const CLEAR_ERROR = 'Riwayat tidak bisa dihapus. Coba lagi.';
 
 /** Isi jendela Pengaturan: setelan, status mode/jeda, dan hasil pemeriksaan Ollama. */
 export class SettingsState {
@@ -84,10 +85,18 @@ export class SettingsState {
   /** Alasan pintasan terakhir tidak bisa dipakai; tampil di baris pintasan. */
   hotkeyError = $state<string | null>(null);
   savingHotkey = $state(false);
+  /** Riwayat aktivitas, yang terbaru lebih dulu; `null` sebelum dimuat. */
+  activity = $state<AuditItem[] | null>(null);
+  /** Riwayat terakhir tidak bisa dibaca. */
+  activityFailed = $state(false);
+  /** Semua catatan yang dimuat ditampilkan, bukan hanya yang terbaru. */
+  allActivity = $state(false);
 
   #backend: SettingsBackend;
   /** Naik setiap pemeriksaan baru; hasil pemeriksaan lama diabaikan. */
   #check = 0;
+  /** Sama, untuk memuat riwayat. */
+  #load = 0;
 
   constructor(backend: SettingsBackend, settings: SettingsView, status: StatusView) {
     this.#backend = backend;
@@ -164,6 +173,33 @@ export class SettingsState {
 
   async openDownload(): Promise<void> {
     await this.#run(() => this.#backend.openDownload(), DOWNLOAD_ERROR);
+  }
+
+  async loadActivity(): Promise<void> {
+    this.#load += 1;
+    const load = this.#load;
+    let items: AuditItem[] | null = null;
+    try {
+      items = await this.#backend.listActivity();
+    } catch {
+      // Pesan dari Rust tidak ditampilkan; jendela cukup tahu riwayat tidak terbaca.
+    }
+    if (load === this.#load) {
+      this.activityFailed = items === null;
+      this.activity = items ?? this.activity;
+    }
+  }
+
+  /** Menghapus semua catatan riwayat; setelan tidak ikut terhapus. */
+  async clearActivity(): Promise<void> {
+    await this.#run(async () => {
+      await this.#backend.clearActivity();
+      // Hasil muat yang masih berjalan berasal dari sebelum dihapus.
+      this.#load += 1;
+      this.activity = [];
+      this.activityFailed = false;
+      this.allActivity = false;
+    }, CLEAR_ERROR);
   }
 
   async #run(action: () => Promise<unknown>, message: string): Promise<void> {

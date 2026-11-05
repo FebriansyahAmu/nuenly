@@ -21,6 +21,28 @@ export interface SettingsView {
   blockedApps: string[];
 }
 
+/** Sama dengan `AskOutcome` di `crates/nuenly-store/src/audit.rs`. */
+export type AskOutcome = 'answered' | 'stopped' | 'failed';
+
+/** Isi kejadian; sama dengan `AuditEvent` di `crates/nuenly-store/src/audit.rs`. */
+export type AuditEvent = {
+  kind: 'ask';
+  model: string;
+  /** Jumlah karakter teks dari layar yang ikut dikirim; 0 berarti hanya perintah. */
+  contextChars: number;
+  outcome: AskOutcome;
+};
+
+/** Satu catatan riwayat aktivitas; sama dengan `AuditItem` di `app/src/audit.rs`. */
+export type AuditItem = AuditEvent & {
+  /** Milidetik sejak epoch Unix. */
+  atMs: number;
+  /** Nama executable aplikasi yang dibantu. */
+  app: string | null;
+  /** ID mode. */
+  mode: string;
+};
+
 /** Aksi jendela Pengaturan ke Rust; dipisah agar mode demo di browser bisa menggantinya. */
 export interface SettingsBackend {
   setModel(model: string | null): Promise<SettingsView>;
@@ -31,6 +53,9 @@ export interface SettingsBackend {
   setMode(id: string): Promise<StatusView>;
   pause(): Promise<StatusView>;
   resume(): Promise<StatusView>;
+  /** Catatan audit terbaru, yang terbaru lebih dulu. */
+  listActivity(): Promise<AuditItem[]>;
+  clearActivity(): Promise<void>;
 }
 
 export const tauriBackend: SettingsBackend = {
@@ -41,4 +66,6 @@ export const tauriBackend: SettingsBackend = {
   setMode: (id) => invoke('status_set_mode', { id }),
   pause: () => invoke('status_pause'),
   resume: () => invoke('status_resume'),
+  listActivity: () => invoke('audit_list'),
+  clearActivity: () => invoke('audit_clear'),
 };

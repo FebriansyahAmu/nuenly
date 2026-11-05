@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { OllamaInfo, OllamaStatus } from '$lib/ollama';
 import type { StatusView } from '$lib/status';
 
-import type { SettingsBackend, SettingsView } from './backend';
+import type { AuditItem, SettingsBackend, SettingsView } from './backend';
 import { formatMemory, modelOptions, modelState, SettingsState } from './settings.svelte';
 
 const SETTINGS: SettingsView = {
@@ -27,6 +27,17 @@ const info = (status: OllamaStatus, models: string[] = []): OllamaInfo => ({
   hardware: { ramBytes: 0, vramBytes: 0, gpu: null },
 });
 const running = (models: string[]) => info('running', models);
+const ACTIVITY: AuditItem[] = [
+  {
+    kind: 'ask',
+    atMs: 1_793_840_000_000,
+    app: 'notepad.exe',
+    mode: 'all',
+    model: 'gemma3:4b',
+    contextChars: 42,
+    outcome: 'answered',
+  },
+];
 
 function backend(overrides: Partial<SettingsBackend> = {}): SettingsBackend {
   return {
@@ -37,6 +48,8 @@ function backend(overrides: Partial<SettingsBackend> = {}): SettingsBackend {
     setMode: (id) => Promise.resolve({ ...STATUS, activeMode: id }),
     pause: () => Promise.resolve({ ...STATUS, pausedUntilMs: 1 }),
     resume: () => Promise.resolve(STATUS),
+    listActivity: () => Promise.resolve(ACTIVITY),
+    clearActivity: () => Promise.resolve(),
     ...overrides,
   };
 }
@@ -147,6 +160,65 @@ describe('SettingsState', () => {
 
     expect(state.modelState).toBe('not-installed');
     expect(state.checking).toBe(false);
+  });
+
+  it('memuat riwayat lalu menghapusnya', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+    expect(state.activity).toBeNull();
+
+    await state.loadActivity();
+    expect(state.activity).toEqual(ACTIVITY);
+    expect(state.activityFailed).toBe(false);
+
+    await state.clearActivity();
+    expect(state.activity).toEqual([]);
+    expect(state.error).toBeNull();
+  });
+
+  it('menandai riwayat yang tidak terbaca tanpa membuang yang sudah tampil', async () => {
+    let fail = false;
+    const state = new SettingsState(
+      backend({ listActivity: () => (fail ? Promise.reject(new Error('SQLite: disk I/O')) : Promise.resolve(ACTIVITY)) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    await state.loadActivity();
+    fail = true;
+    await state.loadActivity();
+
+    expect(state.activityFailed).toBe(true);
+    expect(state.activity).toEqual(ACTIVITY);
+  });
+
+  it('riwayat tetap ada bila gagal dihapus', async () => {
+    const state = new SettingsState(
+      backend({ clearActivity: () => Promise.reject(new Error('riwayat tidak bisa dihapus')) }),
+      SETTINGS,
+      STATUS,
+    );
+    await state.loadActivity();
+
+    await state.clearActivity();
+
+    expect(state.activity).toEqual(ACTIVITY);
+    expect(state.error).toBe('Riwayat tidak bisa dihapus. Coba lagi.');
+  });
+
+  it('riwayat yang dimuat sebelum dihapus tidak muncul lagi', async () => {
+    let finish: (items: AuditItem[]) => void = () => {};
+    const state = new SettingsState(
+      backend({ listActivity: () => new Promise((resolve) => (finish = resolve)) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    const loading = state.loadActivity();
+    await state.clearActivity();
+    finish(ACTIVITY);
+    await loading;
+
+    expect(state.activity).toEqual([]);
   });
 
   it('mengabaikan hasil pemeriksaan lama', async () => {

@@ -136,6 +136,16 @@ impl Store {
         .collect()
     }
 
+    /// Menghapus semua catatan audit atas permintaan pengguna. Setelan tidak ikut terhapus.
+    /// Hasilnya jumlah catatan yang dihapus.
+    ///
+    /// # Errors
+    ///
+    /// Error SQLite; catatan tetap ada.
+    pub fn clear_audit(&self) -> Result<usize, StoreError> {
+        Ok(self.lock().execute("DELETE FROM audit", [])?)
+    }
+
     /// Membuang catatan audit yang lebih tua dari [`RETENTION`] pada waktu `now`. Hasilnya
     /// jumlah catatan yang dibuang.
     ///
@@ -316,6 +326,23 @@ mod tests {
         assert_eq!(recent.len(), 2);
         assert_eq!(recent[0], ask(now + Duration::from_secs(2), "tiga.exe"));
         assert_eq!(recent[1].app.as_deref(), Some("dua.exe"));
+    }
+
+    #[test]
+    fn clearing_the_audit_keeps_the_settings() {
+        let dir = TempDir::new("hapus");
+        let store = Store::open(&dir.file(), &key(8)).unwrap();
+        store.set_setting("model", "gemma3:4b").unwrap();
+        let now = SystemTime::now();
+        store.record(&ask(now, "satu.exe")).unwrap();
+        store.record(&ask(now, "dua.exe")).unwrap();
+
+        assert_eq!(store.clear_audit().unwrap(), 2);
+        assert_eq!(store.recent(10).unwrap(), Vec::new());
+        assert_eq!(
+            store.setting::<String>("model").unwrap().as_deref(),
+            Some("gemma3:4b")
+        );
     }
 
     #[test]

@@ -4,6 +4,8 @@ fn main() {
     let manifest = tauri_build::AppManifest::new().commands(&[
         "app_quit",
         "ask_send",
+        "audit_clear",
+        "audit_list",
         "clipboard_write_text",
         "ollama_open_download",
         "ollama_status",
