@@ -16,6 +16,7 @@ nuenly-llm = { path = "crates/nuenly-llm" }
 nuenly-modes = { path = "crates/nuenly-modes" }
 nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
 nuenly-store = { path = "crates/nuenly-store" }
+nuenly-trigger = { path = "crates/nuenly-trigger" }
 
 anyhow = "1.0.104"
 bytes = "1.12.1"

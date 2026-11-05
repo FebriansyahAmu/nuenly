@@ -2105,6 +2105,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nuenly-trigger"
+version = "0.1.0"
+dependencies = [
+ "nuenly-core",
+]
+
+[[package]]
 name = "num"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4017,6 +4024,7 @@ dependencies = [
  "anyhow",
  "nuenly-core",
  "nuenly-platform-windows",
+ "nuenly-trigger",
 ]
 
 [[package]]
