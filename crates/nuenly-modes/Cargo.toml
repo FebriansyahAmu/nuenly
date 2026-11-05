@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 nuenly-core.workspace = true
 serde.workspace = true
+# Schema output saran (schemas/suggest.json).
+serde_json.workspace = true
 thiserror.workspace = true
 # Manifest mode pack (mode.toml).
 toml.workspace = true

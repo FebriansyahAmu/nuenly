@@ -170,7 +170,7 @@ fn outcome(failure: Option<AskFailure>) -> AskOutcome {
 }
 
 /// Model untuk menjawab: pilihan pengguna, atau pilihan `ResourceProfiler` bila otomatis.
-fn choose(
+pub fn choose(
     hardware: &HardwareInfo,
     models: &[OllamaModel],
     preferred: Option<&str>,

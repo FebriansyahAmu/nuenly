@@ -118,15 +118,21 @@ mod tests {
     use nuenly_core::ProcessName;
 
     use super::ModeManager;
-    use crate::{ModeError, ModePack};
+    use crate::{ModeError, ModePack, PackFiles};
 
     /// Tidak ada pilihan yang diingat.
     const NONE: [(&str, &str); 0] = [];
 
     fn pack(id: &str) -> ModePack {
         ModePack::parse(
-            &format!("id = \"{id}\"\nlabel = \"Uji\"\naccent = \"#000000\"\n"),
-            "Kamu asisten uji.",
+            &format!(
+                "id = \"{id}\"\nlabel = \"Uji\"\naccent = \"#000000\"\n\
+                 [policy.proactive]\nenabled = false\n"
+            ),
+            PackFiles {
+                ask: "Kamu asisten uji.",
+                suggest: None,
+            },
         )
         .unwrap()
     }

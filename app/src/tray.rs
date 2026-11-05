@@ -13,9 +13,9 @@ use tauri::{
 };
 
 use crate::status::{self, AppStatus};
-#[cfg(debug_assertions)]
-use crate::toast;
 use crate::{ask, onboarding};
+#[cfg(debug_assertions)]
+use crate::{suggest, toast};
 
 pub const ID: &str = "nuenly";
 /// Label jendela popup tray.
@@ -48,7 +48,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
     #[cfg(debug_assertions)]
-    menu.insert(&test_toast_menu(app)?, 2)?;
+    {
+        menu.insert(&test_toast_menu(app)?, 2)?;
+        let label = "Uji saran (dev, baca teks terpilih setelah 3 detik)";
+        menu.insert(
+            &MenuItem::with_id(app, suggest::demo::ID, label, true, None::<&str>)?,
+            3,
+        )?;
+    }
 
     let mut tray = TrayIconBuilder::with_id(ID)
         .tooltip(status::tooltip(
@@ -75,6 +82,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let _ = ask::open(app);
             }
             SETTINGS => show_settings(app),
+            #[cfg(debug_assertions)]
+            suggest::demo::ID => suggest::demo::start(app),
             #[cfg(debug_assertions)]
             id if id.starts_with(toast::demo::PREFIX) => show_test_toast(app, id),
             _ => {}

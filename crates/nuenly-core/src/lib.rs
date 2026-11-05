@@ -1,4 +1,5 @@
-//! Tipe inti Nuenly yang bebas OS: `ContextSnapshot`, trait platform, dan `ActivePolicy`.
+//! Tipe inti Nuenly yang bebas OS: `ContextSnapshot`, trait platform, `ActivePolicy`, dan
+//! `Suggestion`.
 //!
 //! Crate ini tidak memanggil API OS apa pun. Implementasi platform ada di crate
 //! `nuenly-platform-*`; test memakai `FakeContextSource` lewat feature `fake`.
@@ -17,6 +18,7 @@ mod policy;
 mod shortcut;
 mod snapshot;
 mod source;
+mod suggestion;
 mod text;
 
 pub use app::{AppIdentity, ForegroundWindow, ProcessName, WindowHandle};
@@ -31,4 +33,5 @@ pub use policy::{
 pub use shortcut::{Key, Shortcut};
 pub use snapshot::{CaptureKind, ContextSnapshot, ControlKind, FieldInfo, Rect};
 pub use source::{CaptureOutcome, ContextSource, capture};
-pub use text::SensitiveText;
+pub use suggestion::{Confidence, Rejection, Suggestion};
+pub use text::{SensitiveText, TAG_PREFIX};
