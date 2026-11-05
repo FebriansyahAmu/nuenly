@@ -1,12 +1,15 @@
 //! `--watch`: mencatat sinyal mengetik dari `WinEvent` dan UIA, tanpa membaca isi kolom, lalu
-//! menandai saat pengguna berhenti mengetik. Purwarupa pemicu "idle" dan "blur" untuk F-09.
+//! menandai saat pengguna berhenti mengetik. Setiap sumber juga diumpankan ke mesin pemicu
+//! F-09 (`nuenly-trigger`) tersendiri, jadi terlihat sumber mana yang memicu di saat yang tepat.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result};
+use nuenly_core::ProactivePolicy;
 use nuenly_platform_windows::activity::{Activity, Signal, Source, UiaActivity, WinEventActivity};
+use nuenly_trigger::{Input, Reason, Trigger, TriggerConfig, TriggerEngine};
 
 use crate::args::Args;
 
@@ -29,29 +32,146 @@ pub fn run(args: &Args) -> Result<()> {
     let started = Instant::now();
     let deadline = started + args.seconds;
     let mut tracker = Tracker::new(args.idle);
+    let mut triggers = Triggers::new(args.idle);
     let mut names = Names::default();
     loop {
         let now = Instant::now();
         if now >= deadline {
             break;
         }
-        let wake = tracker
-            .wake_at()
-            .map_or(deadline, |wake| wake.min(deadline));
-        let ended = match inbox.recv_timeout(wake.saturating_duration_since(now)) {
-            Ok(activity) => tracker.push(activity),
-            Err(RecvTimeoutError::Timeout) => tracker.tick(Instant::now()),
+        let wake = [tracker.wake_at(), triggers.wake_at()]
+            .into_iter()
+            .flatten()
+            .fold(deadline, Instant::min);
+        let (ended, fired) = match inbox.recv_timeout(wake.saturating_duration_since(now)) {
+            Ok(activity) => (tracker.push(activity), triggers.push(activity)),
+            Err(RecvTimeoutError::Timeout) => {
+                let now = Instant::now();
+                (tracker.tick(now), triggers.tick(now))
+            }
             Err(RecvTimeoutError::Disconnected) => break,
         };
         if let Some(burst) = ended {
             print_burst(&burst, started, &mut names, args.idle);
+        }
+        for (source, trigger) in fired {
+            print_trigger(source, &trigger, started, &mut names);
         }
     }
     if let Some(burst) = tracker.finish() {
         print_burst(&burst, started, &mut names, args.idle);
     }
     print_totals(&tracker, &mut names, win.ignored());
+    triggers.print_totals();
     Ok(())
+}
+
+/// Satu mesin pemicu F-09 per sumber sinyal, dengan nilai bawaan produk kecuali jeda idle.
+/// Batas per jam tidak tercapai karena tidak ada saran yang benar-benar tampil.
+struct Triggers {
+    engines: [(Source, TriggerEngine); 2],
+    counts: BTreeMap<(Source, &'static str), u32>,
+}
+
+impl Triggers {
+    fn new(idle: Duration) -> Self {
+        let config = TriggerConfig {
+            idle,
+            ..TriggerConfig::new(&ProactivePolicy::default())
+        };
+        Self {
+            engines: [Source::WinEvent, Source::Uia]
+                .map(|source| (source, TriggerEngine::new(config))),
+            counts: BTreeMap::new(),
+        }
+    }
+
+    fn push(&mut self, activity: Activity) -> Vec<(Source, Trigger)> {
+        let input = input(activity);
+        let fired = self
+            .engines
+            .iter_mut()
+            .filter(|(source, _)| *source == activity.source)
+            .filter_map(|(source, engine)| Some((*source, engine.push(input, activity.at)?)))
+            .collect();
+        self.count(fired)
+    }
+
+    fn tick(&mut self, now: Instant) -> Vec<(Source, Trigger)> {
+        let fired = self
+            .engines
+            .iter_mut()
+            .filter_map(|(source, engine)| Some((*source, engine.tick(now)?)))
+            .collect();
+        self.count(fired)
+    }
+
+    fn wake_at(&self) -> Option<Instant> {
+        self.engines
+            .iter()
+            .filter_map(|(_, engine)| engine.wake_at())
+            .min()
+    }
+
+    fn count(&mut self, fired: Vec<(Source, Trigger)>) -> Vec<(Source, Trigger)> {
+        for (source, trigger) in &fired {
+            *self
+                .counts
+                .entry((*source, reason_name(trigger.reason)))
+                .or_default() += 1;
+        }
+        fired
+    }
+
+    fn print_totals(&self) {
+        let parts: Vec<String> = self
+            .counts
+            .iter()
+            .map(|((source, reason), count)| format!("{} {reason} {count}", source_name(*source)))
+            .collect();
+        println!(
+            "Pemicu F-09: {}",
+            if parts.is_empty() {
+                "-".to_owned()
+            } else {
+                parts.join(", ")
+            }
+        );
+    }
+}
+
+/// Sinyal platform sebagai masukan mesin pemicu.
+fn input(activity: Activity) -> Input {
+    let pid = activity.pid;
+    match activity.signal {
+        Signal::Focus => Input::Focus { pid },
+        Signal::ValueChanged | Signal::TextChanged => Input::Edit { pid },
+        Signal::SelectionChanged | Signal::CaretMoved => Input::Move { pid },
+    }
+}
+
+fn print_trigger(source: Source, trigger: &Trigger, started: Instant, names: &mut Names) {
+    println!(
+        "+{:>6}  {}  → pemicu {} ({})",
+        seconds(trigger.at.saturating_duration_since(started)),
+        names.of(trigger.pid),
+        reason_name(trigger.reason),
+        source_name(source)
+    );
+}
+
+fn reason_name(reason: Reason) -> &'static str {
+    match reason {
+        Reason::Idle => "idle",
+        Reason::Blur => "blur",
+    }
+}
+
+fn source_name(source: Source) -> &'static str {
+    match source {
+        Source::WinEvent => "WinEvent",
+        Source::Uia => "UIA",
+    }
 }
 
 /// Kenapa satu rangkaian ketikan dianggap selesai.
@@ -223,13 +343,7 @@ fn counts(items: impl Iterator<Item = ((Source, Signal), u64)>) -> String {
     }
     sources
         .into_iter()
-        .map(|(source, parts)| {
-            let source = match source {
-                Source::WinEvent => "WinEvent",
-                Source::Uia => "UIA",
-            };
-            format!("{source}: {}", parts.join(", "))
-        })
+        .map(|(source, parts)| format!("{}: {}", source_name(source), parts.join(", ")))
         .collect::<Vec<_>>()
         .join(" | ")
 }
@@ -255,7 +369,9 @@ mod tests {
 
     use nuenly_platform_windows::activity::{Activity, Signal, Source};
 
-    use super::{End, Tracker, seconds};
+    use nuenly_trigger::Reason;
+
+    use super::{End, Tracker, Triggers, seconds};
 
     const IDLE: Duration = Duration::from_millis(1500);
 
@@ -330,6 +446,29 @@ mod tests {
         tracker.push(activity(start, 0, 7, Source::WinEvent, Signal::CaretMoved));
         tracker.push(activity(start, 10, 7, Source::Uia, Signal::ValueChanged));
         assert!(tracker.finish().unwrap().edited());
+    }
+
+    #[test]
+    fn each_source_feeds_its_own_trigger_engine() {
+        let start = Instant::now();
+        let mut triggers = Triggers::new(IDLE);
+        triggers.push(activity(start, 0, 7, Source::Uia, Signal::Focus));
+        for ms in [100, 200, 300] {
+            triggers.push(activity(start, ms, 7, Source::Uia, Signal::TextChanged));
+            triggers.push(activity(start, ms, 7, Source::Uia, Signal::CaretMoved));
+        }
+        let wake = start + Duration::from_millis(1800);
+        assert_eq!(triggers.wake_at(), Some(wake));
+
+        let fired = triggers.tick(wake);
+        assert_eq!(fired.len(), 1);
+        assert_eq!(fired[0].0, Source::Uia);
+        assert_eq!(fired[0].1.reason, Reason::Idle);
+        assert_eq!(
+            triggers.counts.get(&(Source::Uia, "idle")).copied(),
+            Some(1)
+        );
+        assert_eq!(triggers.counts.get(&(Source::WinEvent, "idle")), None);
     }
 
     #[test]

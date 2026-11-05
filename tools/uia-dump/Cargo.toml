@@ -13,6 +13,7 @@ nuenly-core.workspace = true
 [target.'cfg(windows)'.dependencies]
 anyhow.workspace = true
 nuenly-platform-windows.workspace = true
+nuenly-trigger.workspace = true
 
 [lints]
 workspace = true
