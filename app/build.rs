@@ -19,6 +19,7 @@ fn main() {
         "status_pause",
         "status_resume",
         "status_set_mode",
+        "toast_action",
         "toast_layout",
     ]);
     if let Err(error) =

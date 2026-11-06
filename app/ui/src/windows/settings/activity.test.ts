@@ -8,7 +8,9 @@ const MODES = [
   { id: 'medical', label: 'Medical', accent: '#0f766e' },
 ];
 
-const item = (change: Partial<AuditItem> = {}): AuditItem => ({
+type AskItem = Extract<AuditItem, { kind: 'ask' }>;
+
+const item = (change: Partial<AskItem> = {}): AskItem => ({
   kind: 'ask',
   atMs: 0,
   app: 'notepad.exe',
@@ -40,6 +42,41 @@ describe('describeActivity', () => {
     expect(describeActivity(item({ mode: 'lama', outcome: 'stopped' }), MODES)).toMatchObject({
       detail: 'notepad.exe · lama · gemma3:4b · 1.200 karakter dari layar',
       outcome: 'Dihentikan',
+    });
+  });
+
+  it('menjelaskan pemeriksaan saran beserta hasilnya', () => {
+    const check: AuditItem = { ...item(), kind: 'suggest', contextChars: 300, outcome: 'nothing' };
+    expect(describeActivity(check, MODES)).toEqual({
+      title: 'Saran',
+      detail: 'notepad.exe · Umum · gemma3:4b · 300 karakter dari layar',
+      outcome: 'Tidak ada saran',
+      failed: false,
+    });
+    expect(describeActivity({ ...check, outcome: 'dropped' }, MODES).outcome).toBe('Dibuang');
+    expect(describeActivity({ ...check, outcome: 'failed' }, MODES).failed).toBe(true);
+  });
+
+  it('menyebut tanggapan saran dan lamanya sejak saran tampil', () => {
+    const reaction = (change: { reaction: 'disliked' | 'copied' | 'expired'; afterMs: number }): AuditItem => ({
+      kind: 'reaction',
+      atMs: 0,
+      app: 'winword.exe',
+      mode: 'all',
+      ...change,
+    });
+    expect(describeActivity(reaction({ reaction: 'disliked', afterMs: 1600 }), MODES)).toEqual({
+      title: 'Tanggapan saran',
+      detail: 'winword.exe · Umum · setelah 2 detik',
+      outcome: 'Tidak membantu',
+      failed: false,
+    });
+    expect(describeActivity(reaction({ reaction: 'copied', afterMs: 400 }), MODES).detail).toBe(
+      'winword.exe · Umum · setelah kurang dari 1 detik',
+    );
+    expect(describeActivity(reaction({ reaction: 'expired', afterMs: 150_000 }), MODES)).toMatchObject({
+      detail: 'winword.exe · Umum · setelah 3 menit',
+      outcome: 'Hilang sendiri',
     });
   });
 });

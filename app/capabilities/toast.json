@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "toast",
-  "description": "Toast: menerima event toast:show, melaporkan tinggi toast, dan menyalin poin saran.",
+  "description": "Toast: menerima event toast:show, melaporkan tinggi toast dan tombol saran yang diklik, dan menyalin poin saran.",
   "windows": ["toast"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
+    "allow-toast-action",
     "allow-toast-layout",
     "allow-clipboard-write-text",
     "allow-status-get"

@@ -6,7 +6,7 @@
 
   import { toastLayout } from './layout.svelte';
   import ToastView from './ToastView.svelte';
-  import type { ToastPayload } from './types';
+  import type { ToastAction, ToastPayload } from './types';
 
   let { initial = [] }: { initial?: ToastPayload[] } = $props();
 
@@ -22,21 +22,38 @@
   function present(payload: ToastPayload, expanded = false) {
     // Setelah "Lihat", toast tidak hilang sendiri karena pengguna sedang membacanya.
     const sticky = expanded || payload.durationMs === null;
+    const close = (action: ToastAction) => {
+      report(payload, action);
+      toast.dismiss(payload.id);
+    };
     toast.custom(ToastView, {
       id: payload.id,
       duration: sticky ? Number.POSITIVE_INFINITY : (payload.durationMs ?? undefined),
+      onAutoClose: () => report(payload, 'expire'),
       componentProps: {
         payload,
         expanded,
-        onExpand: () => present(payload, true),
-        onClose: () => toast.dismiss(payload.id),
+        onExpand: () => {
+          report(payload, 'view');
+          present(payload, true);
+        },
+        onClose: () => close('close'),
+        onDismiss: () => close('dismiss'),
+        onDislike: () => close('dislike'),
         onCopyPoints: async (text: string) => {
           await copyText(text);
-          toast.dismiss(payload.id);
+          close('copy');
           present(COPIED);
         },
       },
     });
+  }
+
+  /** Tombol saran dicatat Rust sebagai umpan balik tanpa teks; toast lain tidak dilaporkan. */
+  function report(payload: ToastPayload, action: ToastAction) {
+    if (payload.kind === 'suggestion' && isTauri()) {
+      void invoke('toast_action', { id: payload.id, action });
+    }
   }
 
   async function copyText(text: string) {

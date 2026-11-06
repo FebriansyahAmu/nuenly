@@ -1,12 +1,15 @@
-//! Pemeriksaan saran proaktif (US-2): teks yang sedang ditulis pengguna dikirim ke model dengan
-//! prompt dan JSON schema mode pack, jawabannya divalidasi (gagal, ulang sekali, lalu buang),
-//! lalu disaring `Suggestion::new` sebelum boleh tampil di toast.
+//! Saran proaktif (US-2): teks yang sedang ditulis pengguna dikirim ke model dengan prompt dan
+//! JSON schema mode pack, jawabannya divalidasi (gagal, ulang sekali, lalu buang), lalu disaring
+//! `Suggestion::new` sebelum tampil di toast. Setiap pemeriksaan dan tanggapan pengguna atas
+//! sarannya dicatat di audit tanpa teks (F-28).
 
 // Pemicu (F-09) belum disambungkan ke sinyal platform. Sampai itu hanya "Uji saran" di menu tray
-// build debug yang memakai modul ini.
+// build debug yang memeriksa teks.
 #![cfg_attr(not(debug_assertions), allow(dead_code))]
 
-use std::time::Instant;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant, SystemTime};
 
 use nuenly_context::{AssembleError, ContextAssembler, ModelPlan};
 use nuenly_core::{Confidence, ContextSnapshot, Rejection, SensitiveText, Suggestion};
@@ -14,18 +17,25 @@ use nuenly_llm::{
     ChatRequest, LlmError, LlmProvider, Message, OllamaProvider, OutputSchema, structured,
 };
 use nuenly_modes::SuggestSpec;
+use nuenly_store::{AuditEntry, AuditEvent, Reaction, Store, SuggestOutcome};
 use serde::Deserialize;
+use tauri::{AppHandle, Manager, State};
 
 use crate::answer::{self, AskFailure};
-use crate::hardware::HardwareInfo;
-use crate::toast::ToastContent;
-use crate::{logging, ollama};
+use crate::config::ConfigStore;
+use crate::hardware::{HardwareInfo, HardwareState};
+use crate::status::AppStatus;
+use crate::toast::{self, Toast, ToastContent};
+use crate::{logging, ollama, store};
 
 /// Perintah tetap setelah teks layar. Mengulang tugas sesudah data membantu model kecil tetap
 /// pada tugasnya bila teks layar berisi perintah.
 const INSTRUCTION: &str = "Periksa teks di dalam tag di atas. Jawab hanya dengan JSON.";
 /// Suhu rendah agar keputusan ada saran atau tidak stabil untuk teks yang sama.
 const TEMPERATURE: f32 = 0.2;
+/// Saran tampil yang ditunggu tanggapannya. Toast hanya menampilkan satu saran; sisanya untuk
+/// toast yang tidak sempat melapor, misalnya karena jendelanya dimuat ulang.
+const MAX_SHOWN: usize = 8;
 
 /// Alasan pemeriksaan tidak menghasilkan saran. Hanya untuk log: saran proaktif yang gagal cukup
 /// tidak muncul.
@@ -40,15 +50,79 @@ pub enum CheckFailure {
     Rejected(Rejection),
 }
 
-/// Memeriksa teks di `context` dengan prompt dan schema saran mode aktif. `Ok(None)` berarti model
-/// menilai tidak ada yang perlu disarankan.
-pub async fn check(
+/// Memeriksa `context` dengan prompt dan schema saran mode aktif, mencatat pengirimannya di audit
+/// tanpa teks, lalu menampilkan saran yang lolos sebagai toast `id` selama `timeout`. `Ok(true)`
+/// bila saran tampil; mesin pemicu menghitungnya untuk batas saran per jam.
+pub async fn run(
+    app: &AppHandle,
+    id: String,
+    spec: &SuggestSpec,
+    timeout: Duration,
+    context: &ContextSnapshot,
+) -> Result<bool, CheckFailure> {
+    let provider = app.state::<OllamaProvider>();
+    let hardware = app.state::<HardwareState>().get().await;
+    let preferred = app.state::<ConfigStore>().get().model;
+    let prepared = prepare(&provider, &hardware, preferred.as_deref(), spec, context).await?;
+    let (helped, mode) = app.state::<AppStatus>().audit_scope();
+
+    let sent_at = SystemTime::now();
+    let started = Instant::now();
+    let result = ask(&*provider, &prepared).await;
+    tracing::info!(
+        model = %prepared.request.model,
+        num_ctx = prepared.request.num_ctx.get(),
+        total_ms = logging::millis(started.elapsed()),
+        suggested = matches!(result, Ok(Some(_))),
+        failure = result.as_ref().err().map(tracing::field::debug),
+        "pemeriksaan saran"
+    );
+    store::record(
+        &app.state::<Arc<Store>>(),
+        AuditEntry {
+            at: sent_at,
+            app: helped.clone(),
+            mode: mode.clone(),
+            event: AuditEvent::Suggest {
+                model: prepared.request.model.clone(),
+                context_chars: prepared.context_chars,
+                outcome: outcome(&result),
+            },
+        },
+    );
+
+    let Some(suggestion) = result? else {
+        return Ok(false);
+    };
+    app.state::<SuggestState>()
+        .lock()
+        .show(id.clone(), Instant::now(), helped, mode);
+    let toast = Toast {
+        id,
+        duration_ms: Some(logging::millis(timeout)),
+        content: toast_content(&suggestion),
+    };
+    let _ = toast::show(app, &toast);
+    Ok(true)
+}
+
+/// Permintaan yang siap dikirim, beserta schema untuk memvalidasi jawabannya.
+struct Prepared {
+    request: ChatRequest,
+    schema: OutputSchema,
+    /// Jumlah karakter teks layar di permintaan, untuk audit.
+    context_chars: u32,
+}
+
+/// Memastikan Ollama aman dipakai dan ada model yang cocok untuk PC ini, lalu menyusun
+/// permintaan. Bila gagal, tidak ada teks yang dikirim.
+async fn prepare(
     provider: &OllamaProvider,
     hardware: &HardwareInfo,
     preferred: Option<&str>,
     spec: &SuggestSpec,
     context: &ContextSnapshot,
-) -> Result<Option<Suggestion>, CheckFailure> {
+) -> Result<Prepared, CheckFailure> {
     if ollama::exposed().await {
         return Err(CheckFailure::Model(AskFailure::OllamaExposed));
     }
@@ -56,28 +130,16 @@ pub async fn check(
         .await
         .map_err(|err| CheckFailure::Model(err.into()))?;
     let plan = answer::choose(hardware, &models, preferred).map_err(CheckFailure::Model)?;
-    let schema = OutputSchema::new(spec.schema().clone()).map_err(|_| CheckFailure::Schema)?;
-    let request = request(&plan, spec, context)?;
-
-    let started = Instant::now();
-    let result = ask(provider, &request, &schema).await;
-    tracing::info!(
-        model = %request.model,
-        num_ctx = request.num_ctx.get(),
-        total_ms = logging::millis(started.elapsed()),
-        suggested = matches!(result, Ok(Some(_))),
-        failure = result.as_ref().err().map(tracing::field::debug),
-        "pemeriksaan saran"
-    );
-    result
+    build(&plan, spec, context)
 }
 
 /// Prompt sistem pemeriksa saran, lalu teks layar di dalam tag dan [`INSTRUCTION`].
-fn request(
+fn build(
     plan: &ModelPlan,
     spec: &SuggestSpec,
     context: &ContextSnapshot,
-) -> Result<ChatRequest, CheckFailure> {
+) -> Result<Prepared, CheckFailure> {
+    let schema = OutputSchema::new(spec.schema().clone()).map_err(|_| CheckFailure::Schema)?;
     let prompt = ContextAssembler::new(spec.prompt())
         .assemble(
             plan.num_ctx,
@@ -90,6 +152,7 @@ fn request(
                 _ => AskFailure::Failed,
             })
         })?;
+    let context_chars = u32::try_from(prompt.context_chars).unwrap_or(u32::MAX);
     let mut request = ChatRequest::new(
         plan.model.clone(),
         plan.num_ctx,
@@ -97,22 +160,36 @@ fn request(
     );
     request.temperature = Some(TEMPERATURE);
     request.keep_alive = Some(plan.keep_alive);
-    Ok(request)
+    Ok(Prepared {
+        request,
+        schema,
+        context_chars,
+    })
 }
 
-/// Meminta jawaban yang lolos schema, lalu menyaringnya menjadi saran.
+/// Meminta jawaban yang lolos schema, lalu menyaringnya menjadi saran. `Ok(None)` berarti model
+/// menilai tidak ada yang perlu disarankan.
 async fn ask(
     provider: &dyn LlmProvider,
-    request: &ChatRequest,
-    schema: &OutputSchema,
+    prepared: &Prepared,
 ) -> Result<Option<Suggestion>, CheckFailure> {
-    let output: Output = structured(provider, request, schema)
+    let output: Output = structured(provider, &prepared.request, &prepared.schema)
         .await
         .map_err(|err| match err {
             LlmError::SchemaMismatch => CheckFailure::Schema,
             err => CheckFailure::Model(err.into()),
         })?;
     output.suggestion().map_err(CheckFailure::Rejected)
+}
+
+/// Hasil pemeriksaan untuk audit. Teks sudah sampai ke model meskipun sarannya dibuang.
+fn outcome(result: &Result<Option<Suggestion>, CheckFailure>) -> SuggestOutcome {
+    match result {
+        Ok(Some(_)) => SuggestOutcome::Shown,
+        Ok(None) => SuggestOutcome::Nothing,
+        Err(CheckFailure::Schema | CheckFailure::Rejected(_)) => SuggestOutcome::Dropped,
+        Err(CheckFailure::Model(_)) => SuggestOutcome::Failed,
+    }
 }
 
 /// Jawaban pemeriksa saran, sesuai `schemas/suggest.json` mode pack. Field yang tidak dikenal
@@ -162,6 +239,141 @@ pub fn toast_content(suggestion: &Suggestion) -> ToastContent {
     }
 }
 
+/// Tombol toast saran; bentuknya sama dengan `ToastAction` di
+/// `app/ui/src/windows/toast/types.ts`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToastAction {
+    /// "Lihat": rincian dibuka, tanggapan akhirnya menyusul.
+    View,
+    /// "Salin poin".
+    Copy,
+    /// Tombol tutup, atau "Tutup" setelah "Lihat".
+    Close,
+    /// "Abaikan".
+    Dismiss,
+    /// 👎.
+    Dislike,
+    /// Toast hilang sendiri setelah batas waktunya.
+    Expire,
+}
+
+/// Tombol toast saran (US-2). Tanggapan akhir dicatat di audit tanpa teks; toast lain (berhasil,
+/// uji) diabaikan.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
+pub fn toast_action(
+    shown: State<'_, SuggestState>,
+    audit: State<'_, Arc<Store>>,
+    id: String,
+    action: ToastAction,
+) {
+    let Some(answered) = shown.lock().act(&id, action, Instant::now()) else {
+        return;
+    };
+    store::record(
+        &audit,
+        AuditEntry {
+            at: SystemTime::now(),
+            app: answered.app,
+            mode: answered.mode,
+            event: AuditEvent::Reaction {
+                reaction: answered.reaction,
+                after_ms: answered.after_ms,
+            },
+        },
+    );
+}
+
+/// Saran yang sedang tampil dan menunggu tanggapan pengguna. State terkelola Tauri.
+#[derive(Default)]
+pub struct SuggestState(Mutex<Shown>);
+
+impl SuggestState {
+    fn lock(&self) -> MutexGuard<'_, Shown> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// ID toast untuk saran berikutnya.
+    pub fn next_id(&self) -> String {
+        self.lock().next_id()
+    }
+}
+
+/// Logika tanggapan tanpa Tauri agar bisa dites.
+#[derive(Debug, Default)]
+struct Shown {
+    count: u64,
+    toasts: VecDeque<ShownToast>,
+}
+
+#[derive(Debug)]
+struct ShownToast {
+    id: String,
+    at: Instant,
+    /// Aplikasi dan mode saat saran tampil, untuk audit.
+    app: Option<String>,
+    mode: String,
+    viewed: bool,
+}
+
+/// Tanggapan akhir atas satu saran.
+#[derive(Debug, PartialEq, Eq)]
+struct Answered {
+    reaction: Reaction,
+    after_ms: u32,
+    app: Option<String>,
+    mode: String,
+}
+
+impl Shown {
+    fn next_id(&mut self) -> String {
+        self.count += 1;
+        format!("saran-{}", self.count)
+    }
+
+    fn show(&mut self, id: String, at: Instant, app: Option<String>, mode: String) {
+        self.toasts.retain(|toast| toast.id != id);
+        if self.toasts.len() == MAX_SHOWN {
+            self.toasts.pop_front();
+        }
+        self.toasts.push_back(ShownToast {
+            id,
+            at,
+            app,
+            mode,
+            viewed: false,
+        });
+    }
+
+    /// Tombol yang diklik di toast `id`. `Some` saat saran selesai ditanggapi; "Lihat" hanya
+    /// ditandai, dan menutup setelahnya berarti saran dilihat.
+    fn act(&mut self, id: &str, action: ToastAction, now: Instant) -> Option<Answered> {
+        let index = self.toasts.iter().position(|toast| toast.id == id)?;
+        let viewed = self.toasts[index].viewed;
+        let reaction = match action {
+            ToastAction::View => {
+                self.toasts[index].viewed = true;
+                return None;
+            }
+            ToastAction::Copy => Reaction::Copied,
+            ToastAction::Dismiss => Reaction::Dismissed,
+            ToastAction::Dislike => Reaction::Disliked,
+            ToastAction::Close | ToastAction::Expire if viewed => Reaction::Viewed,
+            ToastAction::Close => Reaction::Closed,
+            ToastAction::Expire => Reaction::Expired,
+        };
+        let toast = self.toasts.remove(index)?;
+        let after = now.saturating_duration_since(toast.at);
+        Some(Answered {
+            reaction,
+            after_ms: u32::try_from(after.as_millis()).unwrap_or(u32::MAX),
+            app: toast.app,
+            mode: toast.mode,
+        })
+    }
+}
+
 /// "Uji saran" di menu tray build debug: menilai prompt dan model di aplikasi sungguhan sebelum
 /// pemicu disambungkan.
 #[cfg(debug_assertions)]
@@ -169,17 +381,15 @@ pub mod demo {
     use std::time::Duration;
 
     use nuenly_core::CaptureOutcome;
-    use nuenly_llm::OllamaProvider;
     use tauri::{AppHandle, Manager};
 
-    use super::{check, toast_content};
-    use crate::config::ConfigStore;
+    use super::{SuggestState, run};
     use crate::context::ContextReader;
-    use crate::hardware::HardwareState;
     use crate::status::AppStatus;
     use crate::toast::{self, Toast, ToastContent};
-    use crate::{foreground, logging, onboarding};
+    use crate::{foreground, onboarding};
 
+    /// ID item menu tray.
     pub const ID: &str = "uji-saran";
     /// Jeda sebelum membaca, agar sempat kembali ke aplikasi yang teksnya sudah dipilih.
     const DELAY: Duration = Duration::from_secs(3);
@@ -190,17 +400,21 @@ pub mod demo {
         let app = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(DELAY);
-            tauri::async_runtime::spawn(run(app));
+            tauri::async_runtime::spawn(check_selection(app));
         });
     }
 
-    /// Memeriksa teks terpilih di aplikasi depan seperti saran proaktif, lalu menampilkan
-    /// hasilnya sebagai toast. Gerbangnya sama dengan Tanya Nuenly: persetujuan privasi, jeda,
-    /// dan filter aplikasi.
-    async fn run(app: AppHandle) {
+    /// Memeriksa teks terpilih di aplikasi depan seperti saran proaktif. Gerbangnya sama dengan
+    /// Tanya Nuenly: persetujuan privasi, jeda, dan filter aplikasi. Semua pesan memakai ID toast
+    /// saran, jadi setiap pesan menggantikan yang sebelumnya.
+    async fn check_selection(app: AppHandle) {
+        if !onboarding::accepted(&app) {
+            return;
+        }
+        let id = app.state::<SuggestState>().next_id();
         let show = |content: ToastContent, duration_ms: Option<u64>| {
             let toast = Toast {
-                id: ID.to_owned(),
+                id: id.clone(),
                 duration_ms,
                 content,
             };
@@ -210,9 +424,6 @@ pub mod demo {
             show(ToastContent::Success { message }, Some(NOTICE_MS));
         };
 
-        if !onboarding::accepted(&app) {
-            return;
-        }
         foreground::sync(&app);
         let status = app.state::<AppStatus>();
         let (Some(policy), Some(spec)) = (status.reading_policy(), status.suggest_spec()) else {
@@ -236,14 +447,9 @@ pub mod demo {
             },
             None,
         );
-        let hardware = app.state::<HardwareState>().get().await;
-        let preferred = app.state::<ConfigStore>().get().model;
-        let provider = app.state::<OllamaProvider>();
-        match check(&provider, &hardware, preferred.as_deref(), &spec, &context).await {
-            Ok(Some(suggestion)) => {
-                show(toast_content(&suggestion), Some(logging::millis(timeout)));
-            }
-            Ok(None) => notice("Tidak ada saran untuk teks ini.".to_owned()),
+        match run(&app, id.clone(), &spec, timeout, &context).await {
+            Ok(true) => {}
+            Ok(false) => notice("Tidak ada saran untuk teks ini.".to_owned()),
             Err(failure) => notice(format!("Saran tidak tampil: {failure:?}")),
         }
     }
@@ -263,9 +469,13 @@ mod tests {
     };
     use nuenly_llm::{BoxFuture, ChatRequest, LlmError, LlmProvider, OutputSchema, Role, Usage};
     use nuenly_modes::{ModeManager, SuggestSpec};
+    use nuenly_store::{Reaction, SuggestOutcome};
     use serde_json::json;
 
-    use super::{CheckFailure, INSTRUCTION, Output, ask, request, toast_content};
+    use super::{
+        Answered, CheckFailure, INSTRUCTION, MAX_SHOWN, Output, Shown, ToastAction, ask, build,
+        outcome, toast_content,
+    };
     use crate::answer::AskFailure;
 
     /// Teks sintetis untuk uji dengan Ollama sungguhan, termasuk dua teks berisi prompt injection.
@@ -327,14 +537,16 @@ mod tests {
             for (name, text) in SAMPLES {
                 for _ in 0..RUNS {
                     let started = Instant::now();
-                    let result = super::check(
+                    let prepared = super::prepare(
                         &provider,
                         &hardware,
                         preferred.as_deref(),
                         &spec,
                         &field(text),
                     )
-                    .await;
+                    .await
+                    .unwrap();
+                    let result = ask(&provider, &prepared).await;
                     let elapsed = started.elapsed();
                     let outcome = match &result {
                         Ok(Some(suggestion)) => {
@@ -441,10 +653,8 @@ mod tests {
         answers: Vec<Result<&'static str, LlmError>>,
     ) -> Result<Option<Suggestion>, CheckFailure> {
         let provider = Scripted(Mutex::new(answers.into()));
-        let spec = umum();
-        let request = request(&plan(), &spec, &field("teks sintetis")).unwrap();
-        let schema = OutputSchema::new(spec.schema().clone()).unwrap();
-        tauri::async_runtime::block_on(ask(&provider, &request, &schema))
+        let prepared = build(&plan(), &umum(), &field("teks sintetis")).unwrap();
+        tauri::async_runtime::block_on(ask(&provider, &prepared))
     }
 
     const NOTHING: &str =
@@ -454,12 +664,14 @@ mod tests {
     #[test]
     fn field_text_is_sent_as_data_after_the_mode_prompt() {
         let spec = umum();
-        let request = request(&plan(), &spec, &field("teks sintetis")).unwrap();
+        let prepared = build(&plan(), &spec, &field("teks sintetis")).unwrap();
+        let request = &prepared.request;
 
         assert_eq!(request.model, "gemma3:4b");
         assert_eq!(request.num_ctx.get(), 4096);
         assert_eq!(request.keep_alive, Some(Duration::from_mins(30)));
         assert!(request.temperature.is_some());
+        assert_eq!(prepared.context_chars, 13);
         let [system, user] = &request.messages[..] else {
             panic!("dua pesan");
         };
@@ -553,6 +765,22 @@ mod tests {
     }
 
     #[test]
+    fn audit_tells_shown_from_empty_dropped_and_failed_checks() {
+        let suggestion = answer(vec![Ok(SHORTER)]).unwrap();
+        assert_eq!(outcome(&Ok(suggestion)), SuggestOutcome::Shown);
+        assert_eq!(outcome(&Ok(None)), SuggestOutcome::Nothing);
+        assert_eq!(outcome(&Err(CheckFailure::Schema)), SuggestOutcome::Dropped);
+        assert_eq!(
+            outcome(&Err(CheckFailure::Rejected(Rejection::Link))),
+            SuggestOutcome::Dropped
+        );
+        assert_eq!(
+            outcome(&Err(CheckFailure::Model(AskFailure::Timeout))),
+            SuggestOutcome::Failed
+        );
+    }
+
+    #[test]
     fn suggestions_become_suggestion_toasts() {
         let suggestion = answer(vec![Ok(SHORTER)]).unwrap().unwrap();
         assert_eq!(
@@ -567,5 +795,85 @@ mod tests {
                 "source": null
             })
         );
+    }
+
+    /// Satu saran yang tampil di Notepad saat `at`.
+    fn shown(at: Instant) -> (Shown, String) {
+        let mut shown = Shown::default();
+        let id = shown.next_id();
+        shown.show(
+            id.clone(),
+            at,
+            Some("notepad.exe".to_owned()),
+            "all".to_owned(),
+        );
+        (shown, id)
+    }
+
+    fn reaction(actions: &[ToastAction]) -> Option<Reaction> {
+        let start = Instant::now();
+        let (mut shown, id) = shown(start);
+        actions
+            .iter()
+            .filter_map(|action| shown.act(&id, *action, start))
+            .map(|answered| answered.reaction)
+            .last()
+    }
+
+    #[test]
+    fn each_shown_suggestion_gets_one_reaction() {
+        let start = Instant::now();
+        let (mut shown, id) = shown(start);
+        assert_eq!(
+            shown.act(
+                &id,
+                ToastAction::Dismiss,
+                start + Duration::from_millis(1800)
+            ),
+            Some(Answered {
+                reaction: Reaction::Dismissed,
+                after_ms: 1800,
+                app: Some("notepad.exe".to_owned()),
+                mode: "all".to_owned(),
+            })
+        );
+        // Laporan kedua dari toast yang sama, misalnya hilang sendiri, tidak dihitung lagi.
+        assert_eq!(shown.act(&id, ToastAction::Expire, start), None);
+    }
+
+    #[test]
+    fn viewing_then_closing_counts_as_viewed() {
+        use ToastAction::{Close, Copy, Dislike, Dismiss, Expire, View};
+        assert_eq!(reaction(&[View]), None);
+        assert_eq!(reaction(&[View, Close]), Some(Reaction::Viewed));
+        assert_eq!(reaction(&[View, Copy]), Some(Reaction::Copied));
+        assert_eq!(reaction(&[View, Dislike]), Some(Reaction::Disliked));
+        assert_eq!(reaction(&[Close]), Some(Reaction::Closed));
+        assert_eq!(reaction(&[Dismiss]), Some(Reaction::Dismissed));
+        assert_eq!(reaction(&[Expire]), Some(Reaction::Expired));
+    }
+
+    #[test]
+    fn other_toasts_and_old_suggestions_are_ignored() {
+        let start = Instant::now();
+        let (mut shown, first) = shown(start);
+        assert_eq!(shown.act("copied", ToastAction::Close, start), None);
+
+        for _ in 0..MAX_SHOWN {
+            let id = shown.next_id();
+            shown.show(id, start, None, "all".to_owned());
+        }
+        assert_eq!(shown.act(&first, ToastAction::Dislike, start), None);
+        assert_eq!(shown.toasts.len(), MAX_SHOWN);
+    }
+
+    #[test]
+    fn toast_actions_use_the_names_from_the_window() {
+        let actions: Vec<ToastAction> = serde_json::from_value(json!([
+            "view", "copy", "close", "dismiss", "dislike", "expire"
+        ]))
+        .unwrap();
+        assert_eq!(actions.len(), 6);
+        assert!(serde_json::from_value::<ToastAction>(json!("hapus")).is_err());
     }
 }

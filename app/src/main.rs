@@ -35,6 +35,7 @@ fn main() -> anyhow::Result<()> {
     tauri::Builder::default()
         .manage(ask::AskState::default())
         .manage(hardware::HardwareState::default())
+        .manage(suggest::SuggestState::default())
         .manage(tray::PopupState::default())
         .invoke_handler(tauri::generate_handler![
             answer::ask_send,
@@ -52,6 +53,7 @@ fn main() -> anyhow::Result<()> {
             status::status_pause,
             status::status_resume,
             status::status_set_mode,
+            suggest::toast_action,
             toast::toast_layout,
             tray::app_quit,
             tray::open_settings,

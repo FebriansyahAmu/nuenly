@@ -24,14 +24,35 @@ export interface SettingsView {
 /** Sama dengan `AskOutcome` di `crates/nuenly-store/src/audit.rs`. */
 export type AskOutcome = 'answered' | 'stopped' | 'failed';
 
+/** Sama dengan `SuggestOutcome` di `crates/nuenly-store/src/audit.rs`. */
+export type SuggestOutcome = 'shown' | 'nothing' | 'dropped' | 'failed';
+
+/** Sama dengan `Reaction` di `crates/nuenly-store/src/audit.rs`. */
+export type Reaction = 'copied' | 'viewed' | 'disliked' | 'dismissed' | 'closed' | 'expired';
+
 /** Isi kejadian; sama dengan `AuditEvent` di `crates/nuenly-store/src/audit.rs`. */
-export type AuditEvent = {
-  kind: 'ask';
-  model: string;
-  /** Jumlah karakter teks dari layar yang ikut dikirim; 0 berarti hanya perintah. */
-  contextChars: number;
-  outcome: AskOutcome;
-};
+export type AuditEvent =
+  | {
+      kind: 'ask';
+      model: string;
+      /** Jumlah karakter teks dari layar yang ikut dikirim; 0 berarti hanya perintah. */
+      contextChars: number;
+      outcome: AskOutcome;
+    }
+  | {
+      /** Pemeriksaan saran proaktif. */
+      kind: 'suggest';
+      model: string;
+      contextChars: number;
+      outcome: SuggestOutcome;
+    }
+  | {
+      /** Tanggapan pengguna atas saran yang tampil. */
+      kind: 'reaction';
+      reaction: Reaction;
+      /** Milidetik sejak saran tampil. */
+      afterMs: number;
+    };
 
 /** Satu catatan riwayat aktivitas; sama dengan `AuditItem` di `app/src/audit.rs`. */
 export type AuditItem = AuditEvent & {
