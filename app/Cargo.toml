@@ -17,6 +17,7 @@ nuenly-core.workspace = true
 nuenly-llm.workspace = true
 nuenly-modes.workspace = true
 nuenly-store.workspace = true
+nuenly-trigger.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { workspace = true, features = ["tray-icon"] }

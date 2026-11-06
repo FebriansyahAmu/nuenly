@@ -67,6 +67,9 @@ pub enum AskOutcome {
 pub enum SuggestOutcome {
     /// Saran tampil di toast.
     Shown,
+    /// Ada saran, tetapi ditahan ranker: keyakinannya di bawah ambang, atau sama dengan saran yang
+    /// baru tampil.
+    Held,
     /// Model menilai tidak ada yang perlu disarankan.
     Nothing,
     /// Jawaban tidak sesuai schema setelah diulang, atau dibuang penyaring saran.

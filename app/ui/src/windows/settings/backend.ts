@@ -25,7 +25,7 @@ export interface SettingsView {
 export type AskOutcome = 'answered' | 'stopped' | 'failed';
 
 /** Sama dengan `SuggestOutcome` di `crates/nuenly-store/src/audit.rs`. */
-export type SuggestOutcome = 'shown' | 'nothing' | 'dropped' | 'failed';
+export type SuggestOutcome = 'shown' | 'held' | 'nothing' | 'dropped' | 'failed';
 
 /** Sama dengan `Reaction` di `crates/nuenly-store/src/audit.rs`. */
 export type Reaction = 'copied' | 'viewed' | 'disliked' | 'dismissed' | 'closed' | 'expired';

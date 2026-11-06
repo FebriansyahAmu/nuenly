@@ -1,6 +1,6 @@
 [package]
 name = "nuenly-trigger"
-description = "Pemicu saran proaktif Nuenly: kapan field yang sedang diisi pantas diperiksa, tanpa membaca isinya."
+description = "Pemicu dan ranker saran proaktif Nuenly: kapan field yang sedang diisi pantas diperiksa, dan saran mana yang layak tampil."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

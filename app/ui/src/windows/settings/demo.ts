@@ -33,6 +33,7 @@ function demoActivity(): AuditItem[] {
     { kind: 'reaction', atMs: ago(3), app: 'winword.exe', mode: 'all', reaction: 'copied', afterMs: 6400 },
     { kind: 'suggest', atMs: ago(3), app: 'winword.exe', mode: 'all', model, contextChars: 540, outcome: 'shown' },
     { kind: 'suggest', atMs: ago(12), app: 'chrome.exe', mode: 'all', model, contextChars: 210, outcome: 'nothing' },
+    { kind: 'suggest', atMs: ago(18), app: 'notepad.exe', mode: 'all', model, contextChars: 320, outcome: 'held' },
     { kind: 'reaction', atMs: ago(25), app: 'notepad.exe', mode: 'all', reaction: 'disliked', afterMs: 1500 },
     { kind: 'suggest', atMs: ago(25), app: 'notepad.exe', mode: 'all', model, contextChars: 320, outcome: 'shown' },
   ];

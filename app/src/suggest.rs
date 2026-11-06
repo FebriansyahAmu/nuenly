@@ -1,23 +1,26 @@
 //! Saran proaktif (US-2): teks yang sedang ditulis pengguna dikirim ke model dengan prompt dan
-//! JSON schema mode pack, jawabannya divalidasi (gagal, ulang sekali, lalu buang), lalu disaring
-//! `Suggestion::new` sebelum tampil di toast. Setiap pemeriksaan dan tanggapan pengguna atas
-//! sarannya dicatat di audit tanpa teks (F-28).
+//! JSON schema mode pack, jawabannya divalidasi (gagal, ulang sekali, lalu buang), disaring
+//! `Suggestion::new`, lalu dinilai ranker (F-24) sebelum tampil di toast. Teks yang sama dijawab
+//! dari `ResponseCache` (F-18). Setiap pengiriman ke model dan tanggapan pengguna atas sarannya
+//! dicatat di audit tanpa teks (F-28).
 
 // Pemicu (F-09) belum disambungkan ke sinyal platform. Sampai itu hanya "Uji saran" di menu tray
 // build debug yang memeriksa teks.
 #![cfg_attr(not(debug_assertions), allow(dead_code))]
 
 use std::collections::VecDeque;
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
-use nuenly_context::{AssembleError, ContextAssembler, ModelPlan};
-use nuenly_core::{Confidence, ContextSnapshot, Rejection, SensitiveText, Suggestion};
+use nuenly_context::{AssembleError, ContextAssembler, ModelPlan, ResponseCache};
+use nuenly_core::{Confidence, ContextSnapshot, ProcessName, Rejection, SensitiveText, Suggestion};
 use nuenly_llm::{
     ChatRequest, LlmError, LlmProvider, Message, OllamaProvider, OutputSchema, structured,
 };
 use nuenly_modes::SuggestSpec;
 use nuenly_store::{AuditEntry, AuditEvent, Reaction, Store, SuggestOutcome};
+use nuenly_trigger::{Feedback, Ranker, Verdict};
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
@@ -50,60 +53,111 @@ pub enum CheckFailure {
     Rejected(Rejection),
 }
 
-/// Memeriksa `context` dengan prompt dan schema saran mode aktif, mencatat pengirimannya di audit
-/// tanpa teks, lalu menampilkan saran yang lolos sebagai toast `id` selama `timeout`. `Ok(true)`
-/// bila saran tampil; mesin pemicu menghitungnya untuk batas saran per jam.
+/// Hasil pemeriksaan yang tidak gagal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Checked {
+    /// Saran tampil di toast; mesin pemicu menghitungnya untuk batas saran per jam.
+    Shown,
+    /// Tidak ada yang perlu disarankan, atau jawaban untuk teks yang sama sebelumnya dibuang.
+    Nothing,
+    /// Ada saran, tetapi ditahan ranker.
+    Held(Verdict),
+}
+
+/// Memeriksa `context` dengan prompt dan schema saran mode aktif, lalu menampilkan saran yang
+/// lolos ranker sebagai toast `id` selama `timeout`.
+///
+/// Teks yang sama dengan mode, model, dan prompt yang sama dijawab dari cache tanpa dikirim ulang.
+/// Setiap pengiriman ke model dicatat di audit tanpa teks.
 pub async fn run(
     app: &AppHandle,
     id: String,
     spec: &SuggestSpec,
     timeout: Duration,
     context: &ContextSnapshot,
-) -> Result<bool, CheckFailure> {
+) -> Result<Checked, CheckFailure> {
     let provider = app.state::<OllamaProvider>();
     let hardware = app.state::<HardwareState>().get().await;
     let preferred = app.state::<ConfigStore>().get().model;
     let prepared = prepare(&provider, &hardware, preferred.as_deref(), spec, context).await?;
     let (helped, mode) = app.state::<AppStatus>().audit_scope();
+    let process_name = process(helped.as_deref());
+    let state = app.state::<SuggestState>();
+    let schema = spec.schema().to_string();
+    let key = state.lock().cache.key(
+        &context.text,
+        &mode,
+        &prepared.request.model,
+        &[spec.prompt(), &schema, INSTRUCTION],
+    );
 
-    let sent_at = SystemTime::now();
     let started = Instant::now();
-    let result = ask(&*provider, &prepared).await;
+    let sent_at = SystemTime::now();
+    let cached = state.lock().cache.get(key);
+    let fresh = cached.is_none();
+    let result = if let Some(remembered) = cached {
+        Ok(remembered.into_answer())
+    } else {
+        let result = ask(&*provider, &prepared).await;
+        if let Some(remembered) = cacheable(&result) {
+            state.lock().cache.insert(key, remembered);
+        }
+        result
+    };
+    let verdict = match &result {
+        Ok(Some(suggestion)) => Some(state.lock().ranker.judge(
+            process_name.as_ref(),
+            suggestion,
+            Instant::now(),
+        )),
+        _ => None,
+    };
+    let outcome = outcome(&result, verdict);
     tracing::info!(
         model = %prepared.request.model,
         num_ctx = prepared.request.num_ctx.get(),
+        cached = !fresh,
         total_ms = logging::millis(started.elapsed()),
-        suggested = matches!(result, Ok(Some(_))),
+        outcome = ?outcome,
         failure = result.as_ref().err().map(tracing::field::debug),
         "pemeriksaan saran"
     );
-    store::record(
-        &app.state::<Arc<Store>>(),
-        AuditEntry {
-            at: sent_at,
-            app: helped.clone(),
-            mode: mode.clone(),
-            event: AuditEvent::Suggest {
-                model: prepared.request.model.clone(),
-                context_chars: prepared.context_chars,
-                outcome: outcome(&result),
+    // Jawaban dari cache tidak mengirim teks ke model.
+    if fresh {
+        store::record(
+            &app.state::<Arc<Store>>(),
+            AuditEntry {
+                at: sent_at,
+                app: helped.clone(),
+                mode: mode.clone(),
+                event: AuditEvent::Suggest {
+                    model: prepared.request.model.clone(),
+                    context_chars: prepared.context_chars,
+                    outcome,
+                },
             },
-        },
-    );
+        );
+    }
 
     let Some(suggestion) = result? else {
-        return Ok(false);
+        return Ok(Checked::Nothing);
     };
-    app.state::<SuggestState>()
-        .lock()
-        .show(id.clone(), Instant::now(), helped, mode);
+    if let Some(held) = verdict.filter(|verdict| *verdict != Verdict::Show) {
+        return Ok(Checked::Held(held));
+    }
+    let now = Instant::now();
+    {
+        let mut inner = state.lock();
+        inner.ranker.shown(process_name.as_ref(), &suggestion, now);
+        inner.shown.show(id.clone(), now, helped, mode);
+    }
     let toast = Toast {
         id,
         duration_ms: Some(logging::millis(timeout)),
         content: toast_content(&suggestion),
     };
     let _ = toast::show(app, &toast);
-    Ok(true)
+    Ok(Checked::Shown)
 }
 
 /// Permintaan yang siap dikirim, beserta schema untuk memvalidasi jawabannya.
@@ -182,13 +236,48 @@ async fn ask(
     output.suggestion().map_err(CheckFailure::Rejected)
 }
 
-/// Hasil pemeriksaan untuk audit. Teks sudah sampai ke model meskipun sarannya dibuang.
-fn outcome(result: &Result<Option<Suggestion>, CheckFailure>) -> SuggestOutcome {
+/// Hasil pemeriksaan untuk audit. Teks sudah sampai ke model meskipun sarannya dibuang atau
+/// ditahan.
+fn outcome(
+    result: &Result<Option<Suggestion>, CheckFailure>,
+    verdict: Option<Verdict>,
+) -> SuggestOutcome {
     match result {
-        Ok(Some(_)) => SuggestOutcome::Shown,
+        Ok(Some(_)) if verdict == Some(Verdict::Show) => SuggestOutcome::Shown,
+        Ok(Some(_)) => SuggestOutcome::Held,
         Ok(None) => SuggestOutcome::Nothing,
         Err(CheckFailure::Schema | CheckFailure::Rejected(_)) => SuggestOutcome::Dropped,
         Err(CheckFailure::Model(_)) => SuggestOutcome::Failed,
+    }
+}
+
+/// Jawaban pemeriksa yang diingat cache untuk satu teks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Remembered {
+    Suggestion(Suggestion),
+    /// Tidak ada saran, atau jawabannya dibuang.
+    Nothing,
+}
+
+impl Remembered {
+    fn into_answer(self) -> Option<Suggestion> {
+        match self {
+            Self::Suggestion(suggestion) => Some(suggestion),
+            Self::Nothing => None,
+        }
+    }
+}
+
+/// Jawaban yang disimpan di cache. Jawaban yang dibuang diingat sebagai tidak ada saran, karena
+/// teks yang sama kemungkinan besar dibuang lagi. Kegagalan model tidak disimpan, agar dicoba lagi
+/// saat model sudah siap.
+fn cacheable(result: &Result<Option<Suggestion>, CheckFailure>) -> Option<Remembered> {
+    match result {
+        Ok(Some(suggestion)) => Some(Remembered::Suggestion(suggestion.clone())),
+        Ok(None) | Err(CheckFailure::Schema | CheckFailure::Rejected(_)) => {
+            Some(Remembered::Nothing)
+        }
+        Err(CheckFailure::Model(_)) => None,
     }
 }
 
@@ -258,17 +347,17 @@ pub enum ToastAction {
     Expire,
 }
 
-/// Tombol toast saran (US-2). Tanggapan akhir dicatat di audit tanpa teks; toast lain (berhasil,
-/// uji) diabaikan.
+/// Tombol toast saran (US-2). Tanggapan akhir dicatat di audit tanpa teks dan menyetel ambang
+/// ranker untuk aplikasi itu; toast lain (berhasil, uji) diabaikan.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
 pub fn toast_action(
-    shown: State<'_, SuggestState>,
+    state: State<'_, SuggestState>,
     audit: State<'_, Arc<Store>>,
     id: String,
     action: ToastAction,
 ) {
-    let Some(answered) = shown.lock().act(&id, action, Instant::now()) else {
+    let Some(answered) = state.answer(&id, action, Instant::now()) else {
         return;
     };
     store::record(
@@ -285,18 +374,85 @@ pub fn toast_action(
     );
 }
 
-/// Saran yang sedang tampil dan menunggu tanggapan pengguna. State terkelola Tauri.
-#[derive(Default)]
-pub struct SuggestState(Mutex<Shown>);
+/// Banyaknya jawaban pemeriksa saran yang diingat cache.
+const CACHE_CAPACITY: NonZeroUsize = NonZeroUsize::new(64).unwrap();
+/// Catatan audit terbaru yang dibaca saat start untuk memulihkan tanggapan saran di ranker.
+pub const HISTORY_LIMIT: u32 = 500;
+
+/// Saran yang sedang tampil, cache jawaban, dan ranker. State terkelola Tauri.
+pub struct SuggestState(Mutex<Inner>);
+
+struct Inner {
+    shown: Shown,
+    cache: ResponseCache<Remembered>,
+    ranker: Ranker,
+}
+
+impl Default for SuggestState {
+    fn default() -> Self {
+        Self(Mutex::new(Inner {
+            shown: Shown::default(),
+            cache: ResponseCache::new(CACHE_CAPACITY),
+            ranker: Ranker::new(),
+        }))
+    }
+}
 
 impl SuggestState {
-    fn lock(&self) -> MutexGuard<'_, Shown> {
+    fn lock(&self) -> MutexGuard<'_, Inner> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// ID toast untuk saran berikutnya.
     pub fn next_id(&self) -> String {
-        self.lock().next_id()
+        self.lock().shown.next_id()
+    }
+
+    /// Tombol toast `id`; tanggapan akhirnya juga diteruskan ke ranker.
+    fn answer(&self, id: &str, action: ToastAction, now: Instant) -> Option<Answered> {
+        let mut inner = self.lock();
+        let answered = inner.shown.act(id, action, now)?;
+        inner.ranker.react(
+            process(answered.app.as_deref()).as_ref(),
+            feedback(answered.reaction),
+        );
+        Some(answered)
+    }
+
+    /// Memulihkan tanggapan saran dari catatan audit (terbaru lebih dulu), agar ambang per
+    /// aplikasi tidak mulai dari awal setiap Nuenly dibuka.
+    pub fn restore(&self, history: &[AuditEntry]) {
+        let mut inner = self.lock();
+        for entry in history.iter().rev() {
+            if let AuditEvent::Reaction { reaction, .. } = entry.event {
+                inner
+                    .ranker
+                    .react(process(entry.app.as_deref()).as_ref(), feedback(reaction));
+            }
+        }
+    }
+
+    /// Melupakan jawaban di cache dan tanggapan di ranker, misalnya setelah riwayat dihapus.
+    pub fn forget(&self) {
+        let mut inner = self.lock();
+        inner.cache.clear();
+        inner.ranker.forget();
+    }
+}
+
+fn process(name: Option<&str>) -> Option<ProcessName> {
+    name.and_then(|name| ProcessName::new(name).ok())
+}
+
+/// Tanggapan di toast menurut ranker. Tombol tutup tanpa melihat rinciannya dihitung seperti
+/// "Abaikan".
+fn feedback(reaction: Reaction) -> Feedback {
+    match reaction {
+        Reaction::Copied => Feedback::Copied,
+        Reaction::Viewed => Feedback::Viewed,
+        Reaction::Expired => Feedback::Expired,
+        Reaction::Dismissed | Reaction::Closed => Feedback::Dismissed,
+        Reaction::Disliked => Feedback::Disliked,
     }
 }
 
@@ -383,7 +539,7 @@ pub mod demo {
     use nuenly_core::CaptureOutcome;
     use tauri::{AppHandle, Manager};
 
-    use super::{SuggestState, run};
+    use super::{Checked, SuggestState, Verdict, run};
     use crate::context::ContextReader;
     use crate::status::AppStatus;
     use crate::toast::{self, Toast, ToastContent};
@@ -448,8 +604,14 @@ pub mod demo {
             None,
         );
         match run(&app, id.clone(), &spec, timeout, &context).await {
-            Ok(true) => {}
-            Ok(false) => notice("Tidak ada saran untuk teks ini.".to_owned()),
+            Ok(Checked::Shown) => {}
+            Ok(Checked::Nothing) => notice("Tidak ada saran untuk teks ini.".to_owned()),
+            Ok(Checked::Held(Verdict::BelowThreshold)) => {
+                notice("Saran ditahan: model kurang yakin.".to_owned());
+            }
+            Ok(Checked::Held(_)) => {
+                notice("Saran ditahan: sama dengan saran yang baru tampil.".to_owned());
+            }
             Err(failure) => notice(format!("Saran tidak tampil: {failure:?}")),
         }
     }
@@ -469,12 +631,13 @@ mod tests {
     };
     use nuenly_llm::{BoxFuture, ChatRequest, LlmError, LlmProvider, OutputSchema, Role, Usage};
     use nuenly_modes::{ModeManager, SuggestSpec};
-    use nuenly_store::{Reaction, SuggestOutcome};
+    use nuenly_store::{AuditEntry, AuditEvent, Reaction, SuggestOutcome};
+    use nuenly_trigger::Verdict;
     use serde_json::json;
 
     use super::{
-        Answered, CheckFailure, INSTRUCTION, MAX_SHOWN, Output, Shown, ToastAction, ask, build,
-        outcome, toast_content,
+        Answered, CheckFailure, INSTRUCTION, MAX_SHOWN, Output, Remembered, Shown, SuggestState,
+        ToastAction, ask, build, cacheable, outcome, toast_content,
     };
     use crate::answer::AskFailure;
 
@@ -767,17 +930,95 @@ mod tests {
     #[test]
     fn audit_tells_shown_from_empty_dropped_and_failed_checks() {
         let suggestion = answer(vec![Ok(SHORTER)]).unwrap();
-        assert_eq!(outcome(&Ok(suggestion)), SuggestOutcome::Shown);
-        assert_eq!(outcome(&Ok(None)), SuggestOutcome::Nothing);
-        assert_eq!(outcome(&Err(CheckFailure::Schema)), SuggestOutcome::Dropped);
+        let shown = Ok(suggestion);
+        assert_eq!(outcome(&shown, Some(Verdict::Show)), SuggestOutcome::Shown);
         assert_eq!(
-            outcome(&Err(CheckFailure::Rejected(Rejection::Link))),
+            outcome(&shown, Some(Verdict::BelowThreshold)),
+            SuggestOutcome::Held
+        );
+        assert_eq!(
+            outcome(&shown, Some(Verdict::Repeated)),
+            SuggestOutcome::Held
+        );
+        assert_eq!(outcome(&Ok(None), None), SuggestOutcome::Nothing);
+        assert_eq!(
+            outcome(&Err(CheckFailure::Schema), None),
             SuggestOutcome::Dropped
         );
         assert_eq!(
-            outcome(&Err(CheckFailure::Model(AskFailure::Timeout))),
+            outcome(&Err(CheckFailure::Rejected(Rejection::Link)), None),
+            SuggestOutcome::Dropped
+        );
+        assert_eq!(
+            outcome(&Err(CheckFailure::Model(AskFailure::Timeout)), None),
             SuggestOutcome::Failed
         );
+    }
+
+    #[test]
+    fn dropped_answers_are_cached_as_nothing_and_model_failures_are_retried() {
+        let suggestion = answer(vec![Ok(SHORTER)]).unwrap().unwrap();
+        let remembered = cacheable(&Ok(Some(suggestion.clone()))).unwrap();
+        assert_eq!(remembered.into_answer(), Some(suggestion));
+        for result in [
+            Ok(None),
+            Err(CheckFailure::Schema),
+            Err(CheckFailure::Rejected(Rejection::Command)),
+        ] {
+            assert_eq!(cacheable(&result), Some(Remembered::Nothing));
+        }
+        assert_eq!(
+            cacheable(&Err(CheckFailure::Model(AskFailure::OllamaNotRunning))),
+            None
+        );
+    }
+
+    fn reaction_entry(app: &str, reaction: Reaction) -> AuditEntry {
+        AuditEntry {
+            at: std::time::SystemTime::UNIX_EPOCH,
+            app: Some(app.to_owned()),
+            mode: "all".to_owned(),
+            event: AuditEvent::Reaction {
+                reaction,
+                after_ms: 1000,
+            },
+        }
+    }
+
+    fn threshold(state: &SuggestState, app: &str) -> Confidence {
+        state
+            .lock()
+            .ranker
+            .threshold(Some(&ProcessName::new(app).unwrap()))
+    }
+
+    #[test]
+    fn reactions_from_the_history_and_the_toast_reach_the_ranker() {
+        let state = SuggestState::default();
+        // Terbaru lebih dulu, seperti `Store::recent`.
+        state.restore(&[
+            reaction_entry("notepad.exe", Reaction::Disliked),
+            reaction_entry("notepad.exe", Reaction::Closed),
+            reaction_entry("winword.exe", Reaction::Copied),
+        ]);
+        assert_eq!(threshold(&state, "notepad.exe"), Confidence::High);
+        assert_eq!(threshold(&state, "winword.exe"), Confidence::Medium);
+
+        let start = Instant::now();
+        let id = state.next_id();
+        state.lock().shown.show(
+            id.clone(),
+            start,
+            Some("notepad.exe".to_owned()),
+            "all".to_owned(),
+        );
+        let answered = state.answer(&id, ToastAction::Copy, start).unwrap();
+        assert_eq!(answered.reaction, Reaction::Copied);
+        assert_eq!(threshold(&state, "notepad.exe"), Confidence::Medium);
+
+        state.forget();
+        state.restore(&[reaction_entry("notepad.exe", Reaction::Disliked)]);
+        assert_eq!(threshold(&state, "notepad.exe"), Confidence::Medium);
     }
 
     #[test]

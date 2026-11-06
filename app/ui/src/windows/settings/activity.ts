@@ -24,6 +24,7 @@ const ASK_OUTCOME: Record<AskOutcome, string> = {
 
 const SUGGEST_OUTCOME: Record<SuggestOutcome, string> = {
   shown: 'Tampil',
+  held: 'Ditahan',
   nothing: 'Tidak ada saran',
   dropped: 'Dibuang',
   failed: 'Gagal',
