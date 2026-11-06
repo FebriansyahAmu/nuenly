@@ -25,8 +25,8 @@ pub struct Toast {
 }
 
 /// Isi toast; bentuknya sama dengan `ToastPayload` di `app/ui/src/windows/toast/types.ts`.
-// Produsen saran dan izin (trigger engine, policy gate) baru ada di Fase 2; sampai itu varian
-// selain `Success` hanya dipakai submenu uji di build debug.
+// Produsen saran dan izin (pemicu saran, policy gate) belum tersambung; sampai itu varian selain
+// `Success` hanya dipakai menu uji di build debug.
 #[cfg_attr(not(debug_assertions), allow(dead_code))]
 #[derive(Clone, Serialize)]
 #[serde(

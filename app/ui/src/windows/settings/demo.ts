@@ -22,19 +22,32 @@ const OLLAMA: Record<string, OllamaInfo> = {
   missing: { status: 'missing', version: null, models: [], plan: null, hardware: HARDWARE },
 };
 
-/** Riwayat sintetis: Tanya Nuenly di beberapa aplikasi, terbaru lebih dulu, tiap 47 menit. */
+/**
+ * Riwayat sintetis, terbaru lebih dulu: beberapa saran beserta tanggapannya, lalu Tanya Nuenly di
+ * beberapa aplikasi tiap 47 menit.
+ */
 function demoActivity(): AuditItem[] {
+  const ago = (minutes: number) => Date.now() - minutes * 60 * 1000;
+  const model = 'gemma3:4b';
+  const suggestions: AuditItem[] = [
+    { kind: 'reaction', atMs: ago(3), app: 'winword.exe', mode: 'all', reaction: 'copied', afterMs: 6400 },
+    { kind: 'suggest', atMs: ago(3), app: 'winword.exe', mode: 'all', model, contextChars: 540, outcome: 'shown' },
+    { kind: 'suggest', atMs: ago(12), app: 'chrome.exe', mode: 'all', model, contextChars: 210, outcome: 'nothing' },
+    { kind: 'reaction', atMs: ago(25), app: 'notepad.exe', mode: 'all', reaction: 'disliked', afterMs: 1500 },
+    { kind: 'suggest', atMs: ago(25), app: 'notepad.exe', mode: 'all', model, contextChars: 320, outcome: 'shown' },
+  ];
   const apps = ['notepad.exe', 'winword.exe', 'chrome.exe', null, 'klinik-dummy.exe'];
   const outcomes = ['answered', 'answered', 'stopped', 'answered', 'failed'] as const;
-  return Array.from({ length: 14 }, (_, index) => ({
+  const asks = Array.from({ length: 10 }, (_, index) => ({
     kind: 'ask' as const,
-    atMs: Date.now() - index * 47 * 60 * 1000,
+    atMs: ago(40 + index * 47),
     app: apps[index % apps.length] ?? null,
     mode: index % apps.length === 4 ? 'medical' : 'all',
-    model: 'gemma3:4b',
+    model,
     contextChars: index % 3 === 0 ? 0 : 180 * index,
     outcome: outcomes[index % outcomes.length] ?? 'answered',
   }));
+  return [...suggestions, ...asks];
 }
 
 /** Meniru `ResourceProfiler` untuk PC pengembang: gemma3:4b muat di GPU, gemma4:e4b tidak. */

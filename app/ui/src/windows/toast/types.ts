@@ -20,3 +20,9 @@ export type ToastPayload = {
   | { kind: 'thinking'; message: string }
   | { kind: 'permission'; title: string; body: string }
 );
+
+/**
+ * Tombol toast saran yang dilaporkan ke Rust (command `toast_action`); sama dengan `ToastAction`
+ * di `app/src/suggest.rs`. `expire` berarti toast hilang sendiri.
+ */
+export type ToastAction = 'view' | 'copy' | 'close' | 'dismiss' | 'dislike' | 'expire';

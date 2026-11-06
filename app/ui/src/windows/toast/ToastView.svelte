@@ -2,6 +2,7 @@
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import Shield from '@lucide/svelte/icons/shield';
+  import ThumbsDown from '@lucide/svelte/icons/thumbs-down';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
 
@@ -16,12 +17,19 @@
     expanded = false,
     onExpand,
     onClose,
+    onDismiss,
+    onDislike,
     onCopyPoints,
   }: {
     payload: ToastPayload;
     expanded?: boolean;
     onExpand?: () => void;
+    /** Tombol tutup, "Tutup" setelah "Lihat", dan tombol toast selain saran. */
     onClose?: () => void;
+    /** "Abaikan": bukan sekarang. */
+    onDismiss?: () => void;
+    /** 👎: saran tidak membantu. */
+    onDislike?: () => void;
     /** Menyalin poin; error berarti gagal dan ditampilkan di toast. */
     onCopyPoints?: (text: string) => Promise<void>;
     /** Dari svelte-sonner; tidak dipakai karena penutupan lewat `onClose`. */
@@ -39,6 +47,20 @@
     }
   }
 </script>
+
+<!-- 👎 di ujung kanan baris tombol; `push` mendorongnya ke kanan bila belum ada yang mendorong. -->
+{#snippet dislike(push: boolean)}
+  <Button
+    size="icon-sm"
+    variant="ghost"
+    class={push ? 'ml-auto text-muted-foreground' : 'text-muted-foreground'}
+    aria-label="Saran ini tidak membantu"
+    title="Saran ini tidak membantu"
+    onclick={onDislike}
+  >
+    <ThumbsDown aria-hidden="true" />
+  </Button>
+{/snippet}
 
 <!-- Toast satu baris (berhasil, berpikir) lebih rapat, seperti di desain 02. -->
 <ToastFrame
@@ -67,6 +89,7 @@
           <div class="mt-3 flex items-center gap-2">
             <Button size="sm" onclick={() => copyPoints(payload.points)}>Salin poin</Button>
             <Button size="sm" variant="outline" onclick={onClose}>Tutup</Button>
+            {@render dislike(true)}
           </div>
         {:else}
           <p class="mt-1 text-[13px] text-muted-foreground">{payload.body}</p>
@@ -80,10 +103,11 @@
             {#if payload.points.length > 0}
               <Button size="sm" onclick={onExpand}>Lihat</Button>
             {/if}
-            <Button size="sm" variant="outline" onclick={onClose}>Abaikan</Button>
+            <Button size="sm" variant="outline" onclick={onDismiss}>Abaikan</Button>
             {#if payload.note}
               <span class="ml-auto text-xs text-muted-foreground">{payload.note}</span>
             {/if}
+            {@render dislike(!payload.note)}
           </div>
         {/if}
       </div>

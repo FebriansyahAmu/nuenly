@@ -3,19 +3,39 @@
 
 import type { ModeInfo } from '$lib/status';
 
-import type { AskOutcome, AuditEvent, AuditItem } from './backend';
+import type { AskOutcome, AuditEvent, AuditItem, Reaction, SuggestOutcome } from './backend';
 
 /** Jumlah catatan terbaru yang dikirim Rust; sama dengan `LIMIT` di `app/src/audit.rs`. */
 export const ACTIVITY_LIMIT = 50;
 /** Jumlah catatan yang tampil sebelum "Tampilkan semua". */
 export const ACTIVITY_PREVIEW = 10;
 
-const TITLE: Record<AuditEvent['kind'], string> = { ask: 'Tanya Nuenly' };
+const TITLE: Record<AuditEvent['kind'], string> = {
+  ask: 'Tanya Nuenly',
+  suggest: 'Saran',
+  reaction: 'Tanggapan saran',
+};
 
-const OUTCOME: Record<AskOutcome, string> = {
+const ASK_OUTCOME: Record<AskOutcome, string> = {
   answered: 'Terjawab',
   stopped: 'Dihentikan',
   failed: 'Gagal',
+};
+
+const SUGGEST_OUTCOME: Record<SuggestOutcome, string> = {
+  shown: 'Tampil',
+  nothing: 'Tidak ada saran',
+  dropped: 'Dibuang',
+  failed: 'Gagal',
+};
+
+const REACTION: Record<Reaction, string> = {
+  copied: 'Poin disalin',
+  viewed: 'Dilihat',
+  disliked: 'Tidak membantu',
+  dismissed: 'Diabaikan',
+  closed: 'Ditutup',
+  expired: 'Hilang sendiri',
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -24,7 +44,10 @@ const numberFormat = new Intl.NumberFormat('id-ID');
 
 export interface ActivityRow {
   title: string;
-  /** Aplikasi, mode, model, dan banyaknya teks layar, dipisah titik tengah. */
+  /**
+   * Aplikasi dan mode, lalu model dan banyaknya teks layar (atau lama sampai saran ditanggapi),
+   * dipisah titik tengah.
+   */
   detail: string;
   outcome: string;
   failed: boolean;
@@ -32,14 +55,36 @@ export interface ActivityRow {
 
 export function describeActivity(item: AuditItem, modes: readonly ModeInfo[]): ActivityRow {
   const mode = modes.find((candidate) => candidate.id === item.mode)?.label ?? item.mode;
-  const context =
-    item.contextChars === 0 ? 'tanpa teks layar' : `${numberFormat.format(item.contextChars)} karakter dari layar`;
-  return {
+  const row = (parts: string[], outcome: string, failed = false): ActivityRow => ({
     title: TITLE[item.kind],
-    detail: [item.app, mode, item.model, context].filter((part) => part !== null).join(' · '),
-    outcome: OUTCOME[item.outcome],
-    failed: item.outcome === 'failed',
-  };
+    detail: [item.app, mode, ...parts].filter((part) => part !== null).join(' · '),
+    outcome,
+    failed,
+  });
+  switch (item.kind) {
+    case 'ask':
+      return row([item.model, context(item.contextChars)], ASK_OUTCOME[item.outcome], item.outcome === 'failed');
+    case 'suggest':
+      return row([item.model, context(item.contextChars)], SUGGEST_OUTCOME[item.outcome], item.outcome === 'failed');
+    case 'reaction':
+      return row([after(item.afterMs)], REACTION[item.reaction]);
+  }
+}
+
+function context(chars: number): string {
+  return chars === 0 ? 'tanpa teks layar' : `${numberFormat.format(chars)} karakter dari layar`;
+}
+
+/** Lama sejak saran tampil sampai ditanggapi, dibulatkan ke detik atau menit. */
+function after(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 1) {
+    return 'setelah kurang dari 1 detik';
+  }
+  if (seconds < 60) {
+    return `setelah ${seconds} detik`;
+  }
+  return `setelah ${Math.round(seconds / 60)} menit`;
 }
 
 /** Waktu catatan dalam zona waktu PC: "Hari ini 14.57", "Kemarin 09.05", atau "3 Nov 14.57". */
