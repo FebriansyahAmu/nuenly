@@ -2029,6 +2029,7 @@ dependencies = [
  "nuenly-modes",
  "nuenly-platform-windows",
  "nuenly-store",
+ "nuenly-trigger",
  "serde",
  "serde_json",
  "tauri",

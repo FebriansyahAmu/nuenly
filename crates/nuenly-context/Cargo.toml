@@ -1,6 +1,6 @@
 [package]
 name = "nuenly-context"
-description = "Penyusun konteks Nuenly: ContextAssembler dan ResourceProfiler, menyusul SessionManager dan ResponseCache."
+description = "Penyusun konteks Nuenly: ContextAssembler, ResourceProfiler, dan ResponseCache, menyusul SessionManager."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

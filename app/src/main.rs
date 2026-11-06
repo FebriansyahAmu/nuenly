@@ -60,6 +60,11 @@ fn main() -> anyhow::Result<()> {
         ])
         .setup(|app| {
             let store = store::open(&app.path().app_local_data_dir()?)?;
+            // Ambang saran per aplikasi dilanjutkan dari tanggapan di riwayat; bila riwayat tidak
+            // terbaca, mulai dari awal.
+            if let Ok(history) = store.recent(suggest::HISTORY_LIMIT) {
+                app.state::<suggest::SuggestState>().restore(&history);
+            }
             let legacy = app.path().app_config_dir()?.join(config::LEGACY_FILE);
             let config = config::ConfigStore::load(Arc::clone(&store), &legacy);
             let mut modes = nuenly_modes::ModeManager::official()?;

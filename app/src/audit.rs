@@ -8,6 +8,8 @@ use nuenly_store::{AuditEntry, AuditEvent, Store, StoreError};
 use serde::Serialize;
 use tauri::State;
 
+use crate::suggest::SuggestState;
+
 /// Jumlah catatan terbaru yang ditampilkan.
 const LIMIT: u32 = 50;
 
@@ -49,11 +51,16 @@ pub async fn audit_list(store: State<'_, Arc<Store>>) -> Result<Vec<AuditItem>, 
     Ok(entries.into_iter().map(AuditItem::from).collect())
 }
 
-/// Menghapus semua catatan audit. Setelan tidak ikut terhapus.
+/// Menghapus semua catatan audit. Setelan tidak ikut terhapus. Jawaban saran di cache dan
+/// tanggapan yang diingat ranker ikut dilupakan.
 #[tauri::command]
-pub async fn audit_clear(store: State<'_, Arc<Store>>) -> Result<(), String> {
+pub async fn audit_clear(
+    store: State<'_, Arc<Store>>,
+    suggest: State<'_, SuggestState>,
+) -> Result<(), String> {
     let store = Arc::clone(&store);
     let removed = blocking(move || store.clear_audit(), "riwayat tidak bisa dihapus").await?;
+    suggest.forget();
     tracing::info!(removed, "riwayat aktivitas dihapus pengguna");
     Ok(())
 }

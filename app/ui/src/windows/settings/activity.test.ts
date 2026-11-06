@@ -54,6 +54,7 @@ describe('describeActivity', () => {
       failed: false,
     });
     expect(describeActivity({ ...check, outcome: 'dropped' }, MODES).outcome).toBe('Dibuang');
+    expect(describeActivity({ ...check, outcome: 'held' }, MODES).outcome).toBe('Ditahan');
     expect(describeActivity({ ...check, outcome: 'failed' }, MODES).failed).toBe(true);
   });
 
