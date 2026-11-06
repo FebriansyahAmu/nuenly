@@ -1,6 +1,8 @@
 //! `--watch`: mencatat sinyal mengetik dari `WinEvent` dan UIA, tanpa membaca isi kolom, lalu
 //! menandai saat pengguna berhenti mengetik. Setiap sumber juga diumpankan ke mesin pemicu
 //! F-09 (`nuenly-trigger`) tersendiri, jadi terlihat sumber mana yang memicu di saat yang tepat.
+//! Perpindahan fokus ke aplikasi lain ikut tercetak per sumber, karena mesin pemicu mengabaikan
+//! sinyal dari proses yang bukan pemilik fokus terakhir.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -34,6 +36,7 @@ pub fn run(args: &Args) -> Result<()> {
     let mut tracker = Tracker::new(args.idle);
     let mut triggers = Triggers::new(args.idle);
     let mut names = Names::default();
+    let mut focus = FocusLog::default();
     loop {
         let now = Instant::now();
         if now >= deadline {
@@ -43,11 +46,16 @@ pub fn run(args: &Args) -> Result<()> {
             .into_iter()
             .flatten()
             .fold(deadline, Instant::min);
-        let (ended, fired) = match inbox.recv_timeout(wake.saturating_duration_since(now)) {
-            Ok(activity) => (tracker.push(activity), triggers.push(activity)),
+        let (activity, ended, fired) = match inbox.recv_timeout(wake.saturating_duration_since(now))
+        {
+            Ok(activity) => (
+                Some(activity),
+                tracker.push(activity),
+                triggers.push(activity),
+            ),
             Err(RecvTimeoutError::Timeout) => {
                 let now = Instant::now();
-                (tracker.tick(now), triggers.tick(now))
+                (None, tracker.tick(now), triggers.tick(now))
             }
             Err(RecvTimeoutError::Disconnected) => break,
         };
@@ -56,6 +64,10 @@ pub fn run(args: &Args) -> Result<()> {
         }
         for (source, trigger) in fired {
             print_trigger(source, &trigger, started, &mut names);
+        }
+        // Setelah rangkaian dan pemicu blur yang ditutup oleh fokus ini.
+        if let Some(activity) = activity.filter(|&activity| focus.moved(activity)) {
+            print_focus(&activity, started, &mut names);
         }
     }
     if let Some(burst) = tracker.finish() {
@@ -148,6 +160,28 @@ fn input(activity: Activity) -> Input {
         Signal::ValueChanged | Signal::TextChanged => Input::Edit { pid },
         Signal::SelectionChanged | Signal::CaretMoved => Input::Move { pid },
     }
+}
+
+/// Proses yang terakhir menerima fokus menurut tiap sumber, agar baris fokus hanya tercetak saat
+/// aplikasinya berganti, bukan untuk setiap kolom di aplikasi yang sama.
+#[derive(Default)]
+struct FocusLog(BTreeMap<Source, u32>);
+
+impl FocusLog {
+    /// `true` bila `activity` memindahkan fokus menurut sumbernya ke proses lain.
+    fn moved(&mut self, activity: Activity) -> bool {
+        activity.signal == Signal::Focus
+            && self.0.insert(activity.source, activity.pid) != Some(activity.pid)
+    }
+}
+
+fn print_focus(activity: &Activity, started: Instant, names: &mut Names) {
+    println!(
+        "+{:>6}  {}  fokus masuk ({})",
+        seconds(activity.at.saturating_duration_since(started)),
+        names.of(activity.pid),
+        source_name(activity.source)
+    );
 }
 
 fn print_trigger(source: Source, trigger: &Trigger, started: Instant, names: &mut Names) {
@@ -371,7 +405,7 @@ mod tests {
 
     use nuenly_trigger::Reason;
 
-    use super::{End, Tracker, Triggers, seconds};
+    use super::{End, FocusLog, Tracker, Triggers, seconds};
 
     const IDLE: Duration = Duration::from_millis(1500);
 
@@ -469,6 +503,25 @@ mod tests {
             Some(1)
         );
         assert_eq!(triggers.counts.get(&(Source::WinEvent, "idle")), None);
+    }
+
+    #[test]
+    fn focus_lines_only_mark_a_change_of_app() {
+        let start = Instant::now();
+        let mut log = FocusLog::default();
+        assert!(log.moved(activity(start, 0, 7, Source::WinEvent, Signal::Focus)));
+        // Kolom lain di aplikasi yang sama.
+        assert!(!log.moved(activity(start, 10, 7, Source::WinEvent, Signal::Focus)));
+        // Tiap sumber dicatat sendiri.
+        assert!(log.moved(activity(start, 20, 7, Source::Uia, Signal::Focus)));
+        assert!(!log.moved(activity(
+            start,
+            30,
+            9,
+            Source::WinEvent,
+            Signal::ValueChanged
+        )));
+        assert!(log.moved(activity(start, 40, 9, Source::WinEvent, Signal::Focus)));
     }
 
     #[test]
