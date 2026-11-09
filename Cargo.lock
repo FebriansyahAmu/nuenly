@@ -2095,6 +2095,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nuenly-redact"
+version = "0.1.0"
+dependencies = [
+ "nuenly-core",
+ "regex",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "nuenly-store"
 version = "0.1.0"
 dependencies = [
