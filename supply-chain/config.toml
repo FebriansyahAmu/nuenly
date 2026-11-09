@@ -60,6 +60,11 @@ criteria = "safe-to-deploy"
 version = "0.10.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.block-buffer]]
+version = "0.12.1"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. RustCrypto, dependensi sha2 0.11; wajib diaudit sebelum rilis beta."
+
 [[exemptions.borrow-or-share]]
 version = "0.2.4"
 criteria = "safe-to-deploy"
@@ -128,6 +133,11 @@ criteria = "safe-to-deploy"
 version = "1.0.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.cfg_aliases]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "Hanya build nix di Unix; diaudit sebelum rilis macOS/Linux (Fase 4)."
+
 [[exemptions.chrono]]
 version = "0.4.45"
 criteria = "safe-to-deploy"
@@ -135,6 +145,11 @@ criteria = "safe-to-deploy"
 [[exemptions.combine]]
 version = "4.6.9"
 criteria = "safe-to-deploy"
+
+[[exemptions.const-oid]]
+version = "0.10.2"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. RustCrypto, dependensi digest 0.11; wajib diaudit sebelum rilis beta."
 
 [[exemptions.cookie]]
 version = "0.18.2"
@@ -167,6 +182,11 @@ criteria = "safe-to-deploy"
 [[exemptions.crypto-common]]
 version = "0.1.7"
 criteria = "safe-to-deploy"
+
+[[exemptions.crypto-common]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. RustCrypto, dependensi sha2 0.11; wajib diaudit sebelum rilis beta."
 
 [[exemptions.ctor]]
 version = "1.0.13"
@@ -215,6 +235,11 @@ criteria = "safe-to-deploy"
 [[exemptions.digest]]
 version = "0.9.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.digest]]
+version = "0.11.3"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. RustCrypto, dependensi sha2 0.11; wajib diaudit sebelum rilis beta."
 
 [[exemptions.dirs]]
 version = "7.0.0"
@@ -439,6 +464,11 @@ criteria = "safe-to-deploy"
 [[exemptions.httparse]]
 version = "1.10.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.hybrid-array]]
+version = "0.4.15"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. RustCrypto, dependensi sha2 0.11; wajib diaudit sebelum rilis beta."
 
 [[exemptions.hyper]]
 version = "1.12.0"
@@ -678,6 +708,11 @@ criteria = "safe-to-deploy"
 version = "1.0.6"
 criteria = "safe-to-deploy"
 
+[[exemptions.nix]]
+version = "0.31.3"
+criteria = "safe-to-deploy"
+notes = "Hanya Unix (process-wrap), tidak dikompilasi di Windows; diaudit sebelum rilis macOS/Linux (Fase 4)."
+
 [[exemptions.num-cmp]]
 version = "0.1.0"
 criteria = "safe-to-deploy"
@@ -823,6 +858,11 @@ criteria = "safe-to-deploy"
 version = "3.5.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.process-wrap]]
+version = "10.0.1"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. Menjalankan server MCP stdio dalam job object (ADR 0019), memuat unsafe Win32; wajib diaudit sebelum rilis beta (Fase 2)."
+
 [[exemptions.quick-xml]]
 version = "0.42.0"
 criteria = "safe-to-deploy"
@@ -870,6 +910,11 @@ criteria = "safe-to-deploy"
 [[exemptions.reqwest]]
 version = "0.13.5"
 criteria = "safe-to-deploy"
+
+[[exemptions.rmcp]]
+version = "3.9.0"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. MCP client resmi (ADR 0019): parser JSON-RPC untuk data dari server luar; wajib diaudit sebelum rilis beta (Fase 2)."
 
 [[exemptions.rusqlite]]
 version = "0.41.1"
@@ -963,6 +1008,16 @@ criteria = "safe-to-deploy"
 [[exemptions.servo_arc]]
 version = "0.4.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.sha2]]
+version = "0.11.1"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. RustCrypto; sidik ToolPin (ADR 0019). Versi 0.10 dipakai build Tauri; wajib diaudit sebelum rilis beta."
+
+[[exemptions.signal-hook-registry]]
+version = "1.4.8"
+criteria = "safe-to-deploy"
+notes = "Hanya Unix (tokio process); diaudit sebelum rilis macOS/Linux (Fase 4)."
 
 [[exemptions.simd-adler32]]
 version = "0.3.10"
@@ -1164,6 +1219,11 @@ criteria = "safe-to-deploy"
 [[exemptions.tracing]]
 version = "0.1.44"
 criteria = "safe-to-deploy"
+
+[[exemptions.tracing-attributes]]
+version = "0.1.31"
+criteria = "safe-to-deploy"
+notes = "Belum diaudit. Proc-macro tracing yang dinyalakan rmcp; wajib diaudit sebelum rilis beta."
 
 [[exemptions.tracing-subscriber]]
 version = "0.3.23"
