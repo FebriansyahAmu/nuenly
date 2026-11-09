@@ -13,6 +13,7 @@ publish = false
 nuenly-context = { path = "crates/nuenly-context" }
 nuenly-core = { path = "crates/nuenly-core" }
 nuenly-llm = { path = "crates/nuenly-llm" }
+nuenly-mcp = { path = "crates/nuenly-mcp" }
 nuenly-modes = { path = "crates/nuenly-modes" }
 nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
 nuenly-redact = { path = "crates/nuenly-redact" }
@@ -28,6 +29,12 @@ jsonschema = { version = "0.60.2", default-features = false }
 reqwest = { version = "0.13.5", default-features = false }
 # Pola PII guard (ADR 0018). Versi yang sama sudah dipakai jsonschema.
 regex = "1.13.1"
+# MCP client resmi (ADR 0019). Hanya klien dan proses anak (stdio); tanpa server, makro, OAuth,
+# atau HTTP sampai Streamable HTTP menyusul bersama TLS.
+rmcp = { version = "3.9.0", default-features = false, features = ["client", "transport-child-process"] }
+process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "job-object", "creation-flags", "kill-on-drop"] }
+# Sidik ToolPin yang stabil antar-jalan. Versi yang sama sudah dipakai rmcp.
+sha2 = "0.11.1"
 # SQLCipher dengan OpenSSL yang ikut dikompilasi, jadi tidak ada DLL OpenSSL yang dimuat dari
 # sistem (ADR 0013). Build butuh Perl; di Windows: Strawberry Perl.
 rusqlite = { version = "0.41.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
