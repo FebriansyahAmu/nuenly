@@ -1,0 +1,18 @@
+[package]
+name = "nuenly-redact"
+description = "PII/PHI guard Nuenly: menyamarkan data pribadi dan data kesehatan sebelum teks keluar perangkat, lalu mengembalikannya di jawaban."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nuenly-core.workspace = true
+# Sudah ada di pohon dependensi lewat jsonschema; tanpa lookaround, waktu cocok linear.
+regex.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true
