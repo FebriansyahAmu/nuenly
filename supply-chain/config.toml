@@ -644,7 +644,7 @@ version = "0.1.25"
 criteria = "safe-to-deploy"
 
 [[exemptions.libsqlite3-sys]]
-version = "0.39.1"
+version = "0.40.0"
 criteria = "safe-to-deploy"
 notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
 
@@ -916,8 +916,13 @@ version = "3.9.0"
 criteria = "safe-to-deploy"
 notes = "Belum diaudit. MCP client resmi (ADR 0019): parser JSON-RPC untuk data dari server luar; wajib diaudit sebelum rilis beta (Fase 2)."
 
+[[exemptions.rsqlite-vfs]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+notes = "Hanya target wasm32 (lewat sqlite-wasm-rs dari rusqlite), tidak dikompilasi di Windows; diaudit bila ada build wasm."
+
 [[exemptions.rusqlite]]
-version = "0.41.1"
+version = "0.43.0"
 criteria = "safe-to-deploy"
 notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
 
@@ -1052,9 +1057,14 @@ version = "0.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.sqlcipher-src]]
-version = "419.0.6+sqlcipher-4.19.0-sqlite-3.53.4-libtomcrypt-1.18.2"
+version = "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2"
 criteria = "safe-to-deploy"
-notes = "Store SQLCipher (ADR 0013). Wajib diaudit sebelum rilis beta."
+notes = "Store SQLCipher (ADR 0013). Minimal 420 karena RUSTSEC-2026-0502. Wajib diaudit sebelum rilis beta."
+
+[[exemptions.sqlite-wasm-rs]]
+version = "0.6.3"
+criteria = "safe-to-deploy"
+notes = "Hanya target wasm32 (rusqlite), tidak dikompilasi di Windows; diaudit bila ada build wasm."
 
 [[exemptions.stable_deref_trait]]
 version = "1.2.1"

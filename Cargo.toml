@@ -36,8 +36,9 @@ process-wrap = { version = "10.0.1", default-features = false, features = ["toki
 # Sidik ToolPin yang stabil antar-jalan. Versi yang sama sudah dipakai rmcp.
 sha2 = "0.11.1"
 # SQLCipher dengan OpenSSL yang ikut dikompilasi, jadi tidak ada DLL OpenSSL yang dimuat dari
-# sistem (ADR 0013). Build butuh Perl; di Windows: Strawberry Perl.
-rusqlite = { version = "0.41.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+# sistem (ADR 0013). Build butuh Perl; di Windows: Strawberry Perl. Minimal 0.42 agar
+# sqlcipher-src ≥ 420 (SQLite 3.54.1, RUSTSEC-2026-0502).
+rusqlite = { version = "0.43.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tauri = "2.12.5"
