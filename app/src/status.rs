@@ -5,13 +5,13 @@ use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nuenly_core::{ActivePolicy, AppIdentity};
-use nuenly_modes::{ModeManager, SuggestSpec};
+use nuenly_core::{ActivePolicy, AppIdentity, ProcessName};
+use nuenly_modes::{ModeManager, ModePack, SuggestSpec};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::config::ConfigStore;
-use crate::{foreground, onboarding};
+use crate::{foreground, onboarding, typing};
 
 /// Lama jeda dari tombol "Jeda 15 menit".
 const PAUSE: Duration = Duration::from_mins(15);
@@ -24,6 +24,8 @@ pub struct ModeView {
     pub label: String,
     /// Warna aksen mode untuk sentuhan kecil di UI (titik logo, segmen aktif).
     pub accent: String,
+    /// Mode ini memberi saran saat mengetik.
+    pub suggests: bool,
 }
 
 /// Status untuk jendela; dikirim lewat `status_get` dan event `status:changed`.
@@ -112,12 +114,25 @@ impl Status {
     }
 
     /// Prompt dan schema saran proaktif mode aktif, atau `None` bila mode ini tidak memberi saran.
-    #[cfg_attr(not(debug_assertions), allow(dead_code))] // Lihat `crate::suggest`.
     pub fn suggest_spec(&self) -> Option<SuggestSpec> {
         let pack = self.modes.active();
-        pack.suggest()
-            .filter(|_| pack.policy().proactive.enabled)
-            .cloned()
+        suggest_limit(pack).and(pack.suggest().cloned())
+    }
+
+    /// Batas saran per jam dari mode yang dipakai `app`, atau `None` bila mode itu tidak memberi
+    /// saran atau filter aplikasinya menolak `app`. Tidak bergantung pada aplikasi di latar
+    /// depan, jadi bisa dipakai saat fokus pindah sebelum event latar depan tiba.
+    pub fn suggest_limit_for(&self, app: &ProcessName) -> Option<u32> {
+        let pack = self.modes.pack_for(app);
+        suggest_limit(pack).filter(|_| pack.policy().apps.permits(app))
+    }
+
+    /// Ada mode yang memberi saran saat mengetik.
+    pub fn any_suggests(&self) -> bool {
+        self.modes
+            .packs()
+            .iter()
+            .any(|pack| suggest_limit(pack).is_some())
     }
 
     /// Akhir jeda dalam milidetik sejak epoch Unix; jeda yang sudah lewat dianggap selesai.
@@ -138,6 +153,7 @@ impl Status {
                 id: pack.id().as_str().to_owned(),
                 label: pack.label().to_owned(),
                 accent: pack.accent().to_owned(),
+                suggests: suggest_limit(pack).is_some(),
             })
             .collect();
         StatusView {
@@ -147,6 +163,14 @@ impl Status {
             paused_until_ms: self.paused_until_ms(now),
         }
     }
+}
+
+/// Batas saran per jam mode `pack`, atau `None` bila mode itu tidak memberi saran: kebijakannya
+/// mematikan saran atau mode pack-nya tidak punya prompt dan schema saran.
+fn suggest_limit(pack: &ModePack) -> Option<u32> {
+    let proactive = &pack.policy().proactive;
+    (proactive.enabled && proactive.max_per_hour > 0 && pack.suggest().is_some())
+        .then_some(proactive.max_per_hour)
 }
 
 /// State terkelola Tauri.
@@ -186,9 +210,34 @@ impl AppStatus {
     }
 
     /// Prompt dan schema saran proaktif mode aktif, atau `None` bila mode ini tidak memberi saran.
-    #[cfg_attr(not(debug_assertions), allow(dead_code))] // Lihat `crate::suggest`.
+    #[cfg(debug_assertions)] // Hanya untuk "Uji saran" di menu tray.
     pub fn suggest_spec(&self) -> Option<SuggestSpec> {
         self.lock().suggest_spec()
+    }
+
+    /// Kebijakan baca beserta prompt dan schema saran mode aktif, atau `None` selama dijeda atau
+    /// bila mode ini tidak memberi saran.
+    pub fn suggest_scope(&self) -> Option<(ActivePolicy, SuggestSpec)> {
+        let status = self.lock();
+        if status.paused_until_ms(SystemTime::now()).is_some() {
+            return None;
+        }
+        Some((status.policy(), status.suggest_spec()?))
+    }
+
+    /// Lihat [`Status::suggest_limit_for`].
+    pub fn suggest_limit_for(&self, app: &ProcessName) -> Option<u32> {
+        self.lock().suggest_limit_for(app)
+    }
+
+    /// Lihat [`Status::any_suggests`].
+    pub fn any_suggests(&self) -> bool {
+        self.lock().any_suggests()
+    }
+
+    /// Nuenly sedang dijeda.
+    pub fn paused(&self) -> bool {
+        self.lock().paused_until_ms(SystemTime::now()).is_some()
     }
 
     /// Nama executable aplikasi yang sedang dibantu dan ID mode aktif, untuk audit.
@@ -236,6 +285,8 @@ pub fn status_set_mode(
     };
     // Bila gagal disimpan, pilihan tetap berlaku sampai Nuenly ditutup.
     let _ = store.update(|config| config.app_modes = remembered);
+    // Kolom yang sedang diisi dinilai ulang dengan kebijakan mode baru saat fokus berikutnya.
+    typing::reset(&app);
     broadcast(&app, &view);
     Ok(view)
 }
@@ -244,6 +295,8 @@ pub fn status_set_mode(
 #[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
 pub fn status_pause(app: AppHandle, status: State<'_, AppStatus>) -> StatusView {
     let ((), view) = status.update(|status| status.pause(SystemTime::now(), PAUSE));
+    // Selama dijeda, perubahan isi kolom tidak dipantau sama sekali.
+    typing::refresh(&app);
     broadcast(&app, &view);
 
     // Setelah jeda berakhir, siarkan status baru agar tray dan jendela lain ikut berubah.
@@ -266,6 +319,7 @@ pub fn status_resume(app: AppHandle, status: State<'_, AppStatus>) -> StatusView
 /// Setelah jeda berakhir, mode kembali mengikuti aplikasi yang ada di depan saat ini.
 fn resumed(app: &AppHandle) -> StatusView {
     foreground::sync(app);
+    typing::refresh(app);
     let view = app.state::<AppStatus>().view();
     broadcast(app, &view);
     view
@@ -331,8 +385,8 @@ mod tests {
         assert_eq!(
             view["modes"],
             serde_json::json!([
-                { "id": "all", "label": "Umum", "accent": "#4f46e5" },
-                { "id": "medical", "label": "Medical", "accent": "#0f766e" },
+                { "id": "all", "label": "Umum", "accent": "#4f46e5", "suggests": true },
+                { "id": "medical", "label": "Medical", "accent": "#0f766e", "suggests": false },
             ])
         );
         assert_eq!(view["activeMode"], "all");
@@ -415,6 +469,39 @@ mod tests {
         assert_eq!(status.suggest_spec(), None);
         // Tanpa aplikasi yang sedang dibantu, pilihannya tidak diingat untuk siapa pun.
         assert_eq!(status.remembered(), BTreeMap::new());
+    }
+
+    #[test]
+    fn suggestions_follow_the_mode_of_each_app() {
+        let mut status = status();
+        assert!(status.any_suggests());
+        let notepad = ProcessName::new("notepad.exe").unwrap();
+        let klinik = ProcessName::new("klinik.exe").unwrap();
+        assert_eq!(status.suggest_limit_for(&notepad), Some(6));
+
+        status.follow(app("klinik.exe", "Klinik Sintetis"));
+        status.set_mode("medical");
+        // Medical belum memberi saran; aplikasi lain tidak ikut terpengaruh, apa pun yang di depan.
+        assert_eq!(status.suggest_limit_for(&klinik), None);
+        assert_eq!(status.suggest_limit_for(&notepad), Some(6));
+        // Aplikasi yang tidak pernah dibaca tidak pernah diberi saran.
+        let keepass = ProcessName::new("keepass.exe").unwrap();
+        assert_eq!(status.suggest_limit_for(&keepass), None);
+    }
+
+    #[test]
+    fn no_suggestion_checks_while_paused_or_in_a_mode_without_suggestions() {
+        let status = AppStatus::new(ModeManager::official().unwrap());
+        let (policy, _) = status.suggest_scope().unwrap();
+        assert!(policy.proactive.enabled);
+
+        status.update(|status| status.pause(SystemTime::now(), Duration::from_mins(15)));
+        assert!(status.paused());
+        assert!(status.suggest_scope().is_none());
+
+        status.update(Status::resume);
+        status.update(|status| status.set_mode("medical"));
+        assert!(status.suggest_scope().is_none());
     }
 
     #[test]

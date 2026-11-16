@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+
   import ModeSwitch from '$lib/components/mode-switch.svelte';
   import { Button } from '$lib/components/ui/button';
   import * as Card from '$lib/components/ui/card';
@@ -11,6 +13,10 @@
   let { state }: { state: SettingsState } = $props();
 
   const recorder = new ShortcutRecorder();
+
+  const suggest = $derived(state.settings.suggest);
+  /** Mode yang belum memberi saran, misalnya "Medical"; diambil dari mode pack, bukan ditulis tetap. */
+  const silentModes = $derived(state.status.modes.filter((mode) => !mode.suggests).map((mode) => mode.label));
 
   const keys = $derived((recorder.held ?? state.settings.hotkey).split('+'));
   const notice = $derived.by(() => {
@@ -65,6 +71,65 @@
       {/if}
     </p>
   </Card.Content>
+</Card.Root>
+
+<Card.Root class="gap-0 py-0">
+  <h2 class="border-b px-5 py-3.5 font-semibold">Saran saat mengetik</h2>
+  <div class="flex items-center justify-between gap-4 px-5 py-3.5">
+    <div class="min-w-0">
+      <p id="suggest-label" class="font-medium">Beri saran saat saya berhenti mengetik</p>
+      <p id="suggest-note" class="text-[13px] text-muted-foreground">
+        Saran kecil muncul di pojok kanan bawah tanpa mengganggu ketikan.
+        {#if silentModes.length > 0}
+          Mode {silentModes.join(' dan ')} belum memberi saran.
+        {/if}
+      </p>
+    </div>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={suggest.enabled}
+      aria-labelledby="suggest-label"
+      aria-describedby="suggest-note"
+      class={cn(
+        'inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent shadow-xs transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 forced-colors:border-[ButtonText]',
+        suggest.enabled ? 'bg-primary' : 'bg-input',
+      )}
+      onclick={() => state.setSuggest(!suggest.enabled, suggest.perHour)}
+    >
+      <span
+        class={cn(
+          'pointer-events-none block size-4 rounded-full bg-background shadow-sm transition-transform',
+          suggest.enabled ? 'translate-x-4' : 'translate-x-0',
+        )}
+        aria-hidden="true"
+      ></span>
+    </button>
+  </div>
+  {#if suggest.enabled}
+    <div class="flex items-center justify-between gap-4 border-t px-5 py-3.5">
+      <div class="min-w-0">
+        <label for="suggest-limit" class="font-medium">Paling banyak</label>
+        <p class="text-[13px] text-muted-foreground">Saran yang sering Anda abaikan makin jarang muncul.</p>
+      </div>
+      <div class="relative shrink-0">
+        <select
+          id="suggest-limit"
+          class="h-8 appearance-none rounded-md border bg-background pr-8 pl-3 text-[13px] shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          value={suggest.perHour}
+          onchange={(event) => state.setSuggest(true, Number(event.currentTarget.value))}
+        >
+          {#each suggest.limits as limit (limit)}
+            <option value={limit}>{limit} saran per jam</option>
+          {/each}
+        </select>
+        <ChevronsUpDown
+          class="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+      </div>
+    </div>
+  {/if}
 </Card.Root>
 
 <Card.Root class="gap-0 py-0">

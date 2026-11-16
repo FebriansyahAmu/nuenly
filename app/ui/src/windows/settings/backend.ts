@@ -19,6 +19,16 @@ export interface SettingsView {
   ollamaAddress: string;
   /** Aplikasi yang tidak pernah dibaca, apa pun modenya. */
   blockedApps: string[];
+  suggest: SuggestView;
+}
+
+/** Saran saat mengetik; sama dengan `SuggestView` di `app/src/settings.rs`. */
+export interface SuggestView {
+  enabled: boolean;
+  /** Saran paling banyak per jam. */
+  perHour: number;
+  /** Pilihan batas per jam. */
+  limits: number[];
 }
 
 /** Sama dengan `AskOutcome` di `crates/nuenly-store/src/audit.rs`. */
@@ -69,6 +79,7 @@ export interface SettingsBackend {
   setModel(model: string | null): Promise<SettingsView>;
   /** `null` kembali ke Ctrl+Space. Gagal dengan kode `HotkeyFailure`. */
   setHotkey(shortcut: string | null): Promise<SettingsView>;
+  setSuggest(enabled: boolean, perHour: number): Promise<SettingsView>;
   checkOllama(): Promise<OllamaInfo>;
   openDownload(): Promise<void>;
   setMode(id: string): Promise<StatusView>;
@@ -82,6 +93,7 @@ export interface SettingsBackend {
 export const tauriBackend: SettingsBackend = {
   setModel: (model) => invoke('settings_set_model', { model }),
   setHotkey: (shortcut) => invoke('settings_set_hotkey', { shortcut }),
+  setSuggest: (enabled, perHour) => invoke('settings_set_suggest', { enabled, perHour }),
   checkOllama: () => invoke('ollama_status'),
   openDownload: () => invoke('ollama_open_download'),
   setMode: (id) => invoke('status_set_mode', { id }),

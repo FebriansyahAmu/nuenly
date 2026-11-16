@@ -4,7 +4,7 @@ import type { StatusView } from '$lib/status';
 import type { AuditItem, HotkeyFailure, SettingsBackend, SettingsView } from './backend';
 
 export const PAGES = [
-  { id: 'general', label: 'Umum', subtitle: 'Mode dan pintasan keyboard.' },
+  { id: 'general', label: 'Umum', subtitle: 'Mode, saran, dan pintasan keyboard.' },
   { id: 'model', label: 'Model AI', subtitle: 'Otak yang dipakai Nuenly untuk memberi saran.' },
   { id: 'privacy', label: 'Privasi', subtitle: 'Apa yang dibaca Nuenly, dan kapan.' },
   { id: 'connector', label: 'Connector', subtitle: 'Hubungkan Nuenly dengan layanan lain, selalu dengan izin Anda.' },
@@ -71,6 +71,7 @@ export function hotkeyError(error: unknown): string {
 }
 
 const MODEL_ERROR = 'Pilihan model tidak bisa disimpan. Coba lagi.';
+const SUGGEST_ERROR = 'Setelan saran tidak bisa disimpan. Coba lagi.';
 const DOWNLOAD_ERROR = 'Halaman unduhan tidak bisa dibuka. Buka ollama.com/download di browser.';
 const CLEAR_ERROR = 'Riwayat tidak bisa dihapus. Coba lagi.';
 
@@ -157,6 +158,11 @@ export class SettingsState {
     } finally {
       this.savingHotkey = false;
     }
+  }
+
+  /** Menyalakan atau mematikan saran saat mengetik, atau mengganti batasnya per jam. */
+  async setSuggest(enabled: boolean, perHour: number): Promise<void> {
+    await this.#run(async () => (this.settings = await this.#backend.setSuggest(enabled, perHour)), SUGGEST_ERROR);
   }
 
   async setMode(id: string): Promise<void> {

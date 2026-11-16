@@ -18,6 +18,7 @@ pub struct FakeContextSource {
     page: Result<BrowserPage, ContextError>,
     selection: Option<SensitiveText>,
     focused: Option<(FieldInfo, SensitiveText)>,
+    left: Option<(FieldInfo, SensitiveText)>,
     app_after_read: Option<AppIdentity>,
     page_reads: AtomicUsize,
     reads: AtomicUsize,
@@ -31,6 +32,7 @@ impl Default for FakeContextSource {
             page: Ok(BrowserPage::default()),
             selection: None,
             focused: None,
+            left: None,
             app_after_read: None,
             page_reads: AtomicUsize::new(0),
             reads: AtomicUsize::new(0),
@@ -90,6 +92,13 @@ impl FakeContextSource {
         self
     }
 
+    /// Menetapkan field yang baru ditinggalkan beserta isinya ([`CaptureKind::LeftField`]).
+    #[must_use]
+    pub fn with_left_field(mut self, field: FieldInfo, text: &str) -> Self {
+        self.left = Some((field, SensitiveText::new(text)));
+        self
+    }
+
     /// Mensimulasikan aplikasi lain yang naik ke latar depan selagi jendela dibaca.
     #[must_use]
     pub fn with_switch_during_read(mut self, app: AppIdentity) -> Self {
@@ -137,6 +146,10 @@ impl ContextSource for FakeContextSource {
                 None => return Ok(None),
             },
             CaptureKind::FocusedField => match &self.focused {
+                Some((field, text)) => (Some(field.clone()), text.clone()),
+                None => return Ok(None),
+            },
+            CaptureKind::LeftField => match &self.left {
                 Some((field, text)) => (Some(field.clone()), text.clone()),
                 None => return Ok(None),
             },

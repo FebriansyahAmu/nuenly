@@ -131,7 +131,7 @@ impl ContextAssembler {
             .saturating_mul(CHARS_PER_TOKEN);
         // Dari isi field, yang dipertahankan bagian akhirnya: di situ pengguna sedang mengetik.
         let (kept, truncated) = match snapshot.kind {
-            CaptureKind::FocusedField => suffix(text, room),
+            CaptureKind::FocusedField | CaptureKind::LeftField => suffix(text, room),
             _ => prefix(text, room),
         };
 

@@ -68,7 +68,18 @@ impl ModeManager {
     /// Aplikasi di latar depan berganti ke `app`: mode yang diingat untuk aplikasi itu menjadi
     /// aktif, atau mode pertama bila belum ada.
     pub fn follow(&mut self, app: &ProcessName) {
-        self.active = self.remembered.get(app).copied().unwrap_or(0);
+        self.active = self.index_for(app);
+    }
+
+    /// Mode yang dipakai `app` saat ia di latar depan, tanpa mengubah mode aktif. Dipakai untuk
+    /// sinyal yang datang sebelum event latar depan, misalnya fokus pindah ke kolom.
+    #[must_use]
+    pub fn pack_for(&self, app: &ProcessName) -> &ModePack {
+        &self.packs[self.index_for(app)]
+    }
+
+    fn index_for(&self, app: &ProcessName) -> usize {
+        self.remembered.get(app).copied().unwrap_or(0)
     }
 
     /// Pilihan manual: `id` menjadi mode aktif dan diingat untuk `app`, bila ada. Memilih mode
@@ -188,6 +199,17 @@ mod tests {
         modes.follow(&app("Klinik.exe"));
         assert_eq!(active(&modes), "dua");
         assert_eq!(remembered(&modes), [("klinik.exe", "dua")]);
+    }
+
+    #[test]
+    fn the_mode_of_any_app_can_be_looked_up_without_switching() {
+        let mut modes = modes();
+        modes.choose("dua", Some(&app("klinik.exe")));
+        modes.follow(&app("notepad.exe"));
+
+        assert_eq!(modes.pack_for(&app("klinik.exe")).id().as_str(), "dua");
+        assert_eq!(modes.pack_for(&app("word.exe")).id().as_str(), "satu");
+        assert_eq!(active(&modes), "satu");
     }
 
     #[test]

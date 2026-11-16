@@ -15,7 +15,7 @@ use nuenly_core::{
     ForegroundWindow, ProcessName, Rect, SensitiveText, WindowHandle,
 };
 use uiautomation::patterns::{UILegacyIAccessiblePattern, UITextPattern, UIValuePattern};
-use uiautomation::types::{ControlType, Handle, TextPatternRangeEndpoint, TextUnit};
+use uiautomation::types::{ControlType, Handle, TextAttribute, TextPatternRangeEndpoint, TextUnit};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
 
 use crate::process::process_name;
@@ -363,30 +363,12 @@ impl Uia {
         window: &ForegroundWindow,
     ) -> Result<Option<ContextSnapshot>, ContextError> {
         let element = self.focused_in(window)?;
-        // Bila tidak bisa dipastikan, anggap field kata sandi agar isinya tidak dibaca.
-        let is_password = element.is_password().unwrap_or(true);
-        let control = control_kind(&element);
-        let (text, label) = if is_password {
-            (SensitiveText::default(), None)
-        } else {
-            let Some(text) = field_text(&element, control) else {
-                return Ok(None);
-            };
-            let label = label(&element, &text);
-            (text, label)
-        };
-        Ok(Some(ContextSnapshot {
-            app: window.app.clone(),
-            window_title: SensitiveText::default(),
-            kind: CaptureKind::FocusedField,
-            field: Some(FieldInfo {
-                label,
-                control,
-                is_password,
-                bounds: None,
-            }),
-            text,
-        }))
+        Ok(field_snapshot(window, &element, CaptureKind::FocusedField))
+    }
+
+    /// Klien UIA, untuk memasang handler event di thread yang sama.
+    pub(crate) fn automation(&self) -> &UIAutomation {
+        &self.automation
     }
 
     /// Elemen yang sedang fokus, setelah memastikan `window` masih di latar depan dan elemen
@@ -397,12 +379,8 @@ impl Uia {
     /// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan,
     /// [`ContextError::Unsupported`] bila elemen fokus milik proses lain di jendela yang sama
     /// (misalnya aplikasi UWP di dalam `ApplicationFrameHost`), atau error platform lain.
-    fn focused_in(&self, window: &ForegroundWindow) -> Result<UIElement, ContextError> {
-        let hwnd = window::foreground();
-        if window::handle(hwnd) != window.handle {
-            return Err(ContextError::ForegroundChanged);
-        }
-        let pid = window::window_process(hwnd).ok_or(ContextError::ForegroundChanged)?;
+    pub(crate) fn focused_in(&self, window: &ForegroundWindow) -> Result<UIElement, ContextError> {
+        let pid = foreground_process(window)?;
         let element = self
             .automation
             .get_focused_element()
@@ -438,6 +416,107 @@ impl Uia {
             current = self.walker.get_previous_sibling(&sibling).ok();
         }
         nodes
+    }
+}
+
+/// Proses pemilik `window`, setelah memastikan jendela itu masih di latar depan.
+///
+/// # Errors
+///
+/// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan.
+fn foreground_process(window: &ForegroundWindow) -> Result<u32, ContextError> {
+    let hwnd = window::foreground();
+    if window::handle(hwnd) != window.handle {
+        return Err(ContextError::ForegroundChanged);
+    }
+    window::window_process(hwnd).ok_or(ContextError::ForegroundChanged)
+}
+
+/// Isi `element` beserta labelnya sebagai snapshot `kind` dari `window`, atau `None` bila
+/// elemen itu tidak mengekspos teks. Dari field kata sandi tidak ada yang dibaca.
+pub(crate) fn field_snapshot(
+    window: &ForegroundWindow,
+    element: &UIElement,
+    kind: CaptureKind,
+) -> Option<ContextSnapshot> {
+    // Bila tidak bisa dipastikan, anggap field kata sandi agar isinya tidak dibaca.
+    let is_password = element.is_password().unwrap_or(true);
+    let control = control_kind(element);
+    let (text, label) = if is_password {
+        (SensitiveText::default(), None)
+    } else {
+        let text = field_text(element, control)?;
+        let label = label(element, &text);
+        (text, label)
+    };
+    Some(ContextSnapshot {
+        app: window.app.clone(),
+        window_title: SensitiveText::default(),
+        kind,
+        field: Some(FieldInfo {
+            label,
+            control,
+            is_password,
+            bounds: None,
+        }),
+        text,
+    })
+}
+
+/// Membaca `element`, field yang baru ditinggalkan pengguna, seperti [`Uia::read_field`]. Hanya
+/// bila `window` masih di latar depan dan `element` milik prosesnya; field di aplikasi lain
+/// tidak pernah dibaca lewat jalur ini. Field baca-saja tidak dibaca.
+///
+/// # Errors
+///
+/// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan, atau error
+/// platform lain.
+pub(crate) fn read_left(
+    window: &ForegroundWindow,
+    element: &UIElement,
+) -> Result<Option<ContextSnapshot>, ContextError> {
+    let pid = foreground_process(window)?;
+    if element.get_process_id().map_err(uia_error("ProcessId"))? != pid || read_only(element) {
+        return Ok(None);
+    }
+    Ok(field_snapshot(window, element, CaptureKind::LeftField))
+}
+
+/// Field yang bisa diketiki pengguna: bukan kata sandi, dan Value pattern-nya tidak baca-saja
+/// atau teks di posisi caret-nya bisa diubah (dokumen seperti Word, atau kolom kaya di web).
+/// Tombol, daftar, dan halaman web biasa tidak termasuk. Yang tidak bisa dipastikan dianggap
+/// tidak.
+pub(crate) fn typeable(element: &UIElement) -> bool {
+    if element.is_password().unwrap_or(true) {
+        return false;
+    }
+    if element.get_pattern::<UIValuePattern>().is_ok() {
+        return !read_only(element);
+    }
+    let editable = || -> Option<bool> {
+        let caret = element
+            .get_pattern::<UITextPattern>()
+            .ok()?
+            .get_selection()
+            .ok()?
+            .into_iter()
+            .next()?;
+        let read_only: bool = caret
+            .get_attribute_value(TextAttribute::IsReadOnly)
+            .ok()?
+            .try_into()
+            .ok()?;
+        Some(!read_only)
+    };
+    editable().unwrap_or(false)
+}
+
+/// Field baca-saja menurut Value pattern; yang tidak bisa dipastikan dianggap baca-saja.
+/// Elemen tanpa Value pattern (misalnya dokumen) tidak dianggap baca-saja.
+pub(crate) fn read_only(element: &UIElement) -> bool {
+    match element.get_pattern::<UIValuePattern>() {
+        Ok(pattern) => pattern.is_readonly().unwrap_or(true),
+        Err(_) => false,
     }
 }
 

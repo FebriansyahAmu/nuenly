@@ -12,9 +12,10 @@ const SETTINGS: SettingsView = {
   hotkeyStatus: 'active',
   ollamaAddress: '127.0.0.1:11434',
   blockedApps: ['nuenly.exe'],
+  suggest: { enabled: true, perHour: 6, limits: [1, 3, 6] },
 };
 const STATUS: StatusView = {
-  modes: [{ id: 'all', label: 'Umum', accent: '#4f46e5' }],
+  modes: [{ id: 'all', label: 'Umum', accent: '#4f46e5', suggests: true }],
   activeMode: 'all',
   appName: null,
   pausedUntilMs: null,
@@ -43,6 +44,7 @@ function backend(overrides: Partial<SettingsBackend> = {}): SettingsBackend {
   return {
     setModel: (model) => Promise.resolve({ ...SETTINGS, model }),
     setHotkey: (shortcut) => Promise.resolve({ ...SETTINGS, hotkey: shortcut ?? 'Ctrl+Space' }),
+    setSuggest: (enabled, perHour) => Promise.resolve({ ...SETTINGS, suggest: { ...SETTINGS.suggest, enabled, perHour } }),
     checkOllama: () => Promise.resolve(running(['gpt-oss:20b'])),
     openDownload: () => Promise.resolve(),
     setMode: (id) => Promise.resolve({ ...STATUS, activeMode: id }),
@@ -141,6 +143,30 @@ describe('SettingsState', () => {
     const unknown = failing('Command settings_set_hotkey not allowed');
     await unknown.setHotkey('Alt+Space');
     expect(unknown.hotkeyError).toBe('Perubahan tidak bisa disimpan. Coba lagi.');
+  });
+
+  it('mematikan saran dan mengganti batasnya', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+
+    await state.setSuggest(true, 3);
+    expect(state.settings.suggest).toMatchObject({ enabled: true, perHour: 3 });
+
+    await state.setSuggest(false, 3);
+    expect(state.settings.suggest.enabled).toBe(false);
+    expect(state.error).toBeNull();
+  });
+
+  it('setelan saran tetap bila gagal disimpan', async () => {
+    const state = new SettingsState(
+      backend({ setSuggest: () => Promise.reject(new Error('database is locked')) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    await state.setSuggest(false, 6);
+
+    expect(state.settings.suggest.enabled).toBe(true);
+    expect(state.error).toBe('Setelan saran tidak bisa disimpan. Coba lagi.');
   });
 
   it('menjeda lalu melanjutkan', async () => {

@@ -11,6 +11,9 @@ pub enum CaptureKind {
     SelectedText,
     /// Isi field yang sedang fokus.
     FocusedField,
+    /// Isi field yang baru saja ditinggalkan pengguna setelah diisi, di jendela yang sama
+    /// (pemicu blur saran proaktif). Dibaca sekali.
+    LeftField,
 }
 
 /// Jenis kontrol tempat teks dibaca.

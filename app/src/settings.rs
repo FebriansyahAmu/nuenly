@@ -4,8 +4,9 @@ use nuenly_core::Shortcut;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::config::{Config, ConfigStore};
+use crate::config::{Config, ConfigStore, SUGGEST_LIMITS, SuggestConfig};
 use crate::hotkey::{HotkeyState, HotkeyStatus};
+use crate::typing;
 
 const MAX_MODEL_NAME: usize = 200;
 
@@ -21,6 +22,17 @@ pub struct SettingsView {
     pub ollama_address: String,
     /// Aplikasi yang tidak pernah dibaca, apa pun modenya.
     pub blocked_apps: &'static [&'static str],
+    pub suggest: SuggestView,
+}
+
+/// Saran saat mengetik di Pengaturan › Umum.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestView {
+    pub enabled: bool,
+    pub per_hour: u32,
+    /// Pilihan batas per jam.
+    pub limits: &'static [u32],
 }
 
 /// Kenapa pintasan tidak bisa diganti; bentuknya sama dengan `HotkeyFailure` di
@@ -45,6 +57,11 @@ fn view(config: &Config, (hotkey, status): (Shortcut, HotkeyStatus)) -> Settings
         hotkey_status: status,
         ollama_address: nuenly_llm::ollama::DEFAULT_ADDRESS.to_string(),
         blocked_apps: nuenly_core::ALWAYS_BLOCKED,
+        suggest: SuggestView {
+            enabled: config.suggest.enabled,
+            per_hour: config.suggest.per_hour,
+            limits: SUGGEST_LIMITS,
+        },
     }
 }
 
@@ -101,6 +118,28 @@ pub fn settings_set_model(
         .map_err(|_| "Pilihan model tidak bisa disimpan. Coba lagi.".to_owned())
 }
 
+/// Menyalakan atau mematikan saran saat mengetik dan mengatur batasnya per jam (US-2).
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Argumen command Tauri selalu berupa nilai.
+pub fn settings_set_suggest(
+    app: AppHandle,
+    store: State<'_, ConfigStore>,
+    hotkey: State<'_, HotkeyState>,
+    enabled: bool,
+    per_hour: u32,
+) -> Result<SettingsView, String> {
+    if !SUGGEST_LIMITS.contains(&per_hour) {
+        return Err("Batas saran tidak dikenal.".to_owned());
+    }
+    let config = store
+        .update(|config| config.suggest = SuggestConfig { enabled, per_hour })
+        .map_err(|_| "Setelan saran tidak bisa disimpan. Coba lagi.".to_owned())?;
+    // Batas baru berlaku mulai kolom berikutnya; saran yang mati berhenti dipantau sekarang.
+    typing::reset(&app);
+    typing::refresh(&app);
+    Ok(view(&config, hotkey.current()))
+}
+
 /// Nama model Ollama, misalnya `gpt-oss:20b` atau `hf.co/org/model:Q4_K_M`.
 fn valid_model_name(name: &str) -> bool {
     !name.is_empty()
@@ -155,5 +194,8 @@ mod tests {
         assert_eq!(settings.hotkey_status, HotkeyStatus::Taken);
         assert_eq!(settings.ollama_address, "127.0.0.1:11434");
         assert!(settings.blocked_apps.contains(&"keepass.exe"));
+        assert!(settings.suggest.enabled);
+        assert_eq!(settings.suggest.per_hour, 6);
+        assert_eq!(settings.suggest.limits, [1, 3, 6]);
     }
 }

@@ -1,17 +1,19 @@
-//! Pembacaan konteks dari aplikasi aktif (F-02). Selalu lewat `nuenly_core::capture`, jadi
-//! filter aplikasi diperiksa sebelum isi jendela dibaca.
+//! Pembacaan konteks dari aplikasi aktif untuk Tanya Nuenly (F-02). Selalu lewat
+//! `nuenly_core::capture_first`, jadi filter aplikasi diperiksa sebelum isi jendela dibaca. Saran
+//! saat mengetik membaca lewat pemantaunya sendiri (`crate::typing`).
 
 #[cfg(windows)]
 use std::time::Duration;
 
 use nuenly_core::{
-    ActivePolicy, CaptureKind, CaptureOutcome, ContextError, ContextSource, capture, capture_first,
+    ActivePolicy, CaptureKind, CaptureOutcome, ContextError, ContextSource, capture_first,
 };
 
 /// Batas tunggu satu pembacaan (teks terpilih atau isi field). Target PRD baca UIA ≤ 50 ms; sisanya cadangan untuk
-/// aplikasi yang lambat menjawab, sebelum Tanya Nuenly tetap dibuka tanpa konteks.
+/// aplikasi yang lambat menjawab, sebelum Tanya Nuenly tetap dibuka tanpa konteks. Dipakai juga
+/// pemicu saran.
 #[cfg(windows)]
-const READ_TIMEOUT: Duration = Duration::from_millis(250);
+pub const READ_TIMEOUT: Duration = Duration::from_millis(250);
 
 /// State terkelola Tauri. `None` bila OS ini belum punya sumber konteks.
 pub struct ContextReader(Option<Box<dyn ContextSource>>);
@@ -28,11 +30,12 @@ impl ContextReader {
         Self(source)
     }
 
-    /// Membaca teks terpilih di aplikasi aktif bila `policy` mengizinkan. Blocking, paling lama
-    /// sekitar batas tunggu sumbernya.
+    /// Membaca teks terpilih di aplikasi aktif bila `policy` mengizinkan, untuk "Uji saran" di
+    /// menu tray build debug. Blocking, paling lama sekitar batas tunggu sumbernya.
+    #[cfg(debug_assertions)]
     pub fn selection(&self, policy: &ActivePolicy) -> Result<CaptureOutcome, ContextError> {
         match &self.0 {
-            Some(source) => capture(source.as_ref(), policy, CaptureKind::SelectedText),
+            Some(source) => capture_first(source.as_ref(), policy, &[CaptureKind::SelectedText]),
             None => Err(ContextError::Unsupported),
         }
     }

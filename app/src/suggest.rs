@@ -4,10 +4,6 @@
 //! dari `ResponseCache` (F-18). Setiap pengiriman ke model dan tanggapan pengguna atas sarannya
 //! dicatat di audit tanpa teks (F-28).
 
-// Pemicu (F-09) belum disambungkan ke sinyal platform. Sampai itu hanya "Uji saran" di menu tray
-// build debug yang memeriksa teks.
-#![cfg_attr(not(debug_assertions), allow(dead_code))]
-
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -530,8 +526,8 @@ impl Shown {
     }
 }
 
-/// "Uji saran" di menu tray build debug: menilai prompt dan model di aplikasi sungguhan sebelum
-/// pemicu disambungkan.
+/// "Uji saran" di menu tray build debug: menilai prompt dan model pada teks terpilih di aplikasi
+/// sungguhan tanpa menunggu pemicu.
 #[cfg(debug_assertions)]
 pub mod demo {
     use std::time::Duration;

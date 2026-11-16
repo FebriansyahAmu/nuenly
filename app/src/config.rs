@@ -26,6 +26,43 @@ pub struct Config {
     /// Mode pilihan pengguna per aplikasi: nama executable → ID mode, misalnya
     /// `"klinik.exe": "medical"`. Aplikasi lain memakai mode pertama.
     pub app_modes: BTreeMap<String, String>,
+    /// Saran saat mengetik (US-2).
+    pub suggest: SuggestConfig,
+}
+
+/// Pilihan saran yang boleh dipakai pengguna, per jam. Yang terbesar sama dengan batas PRD.
+pub const SUGGEST_LIMITS: &[u32] = &[1, 3, 6];
+
+/// Setelan saran saat mengetik. Mode pack tetap bisa mematikan saran atau membatasinya lebih
+/// rendah.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SuggestConfig {
+    pub enabled: bool,
+    /// Saran paling banyak per jam, salah satu dari [`SUGGEST_LIMITS`].
+    pub per_hour: u32,
+}
+
+impl Default for SuggestConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            per_hour: 6,
+        }
+    }
+}
+
+impl SuggestConfig {
+    /// Batas per jam yang berlaku dengan batas mode pack `pack_limit`. Nilai tersimpan yang tidak
+    /// dikenal memakai pilihan terkecil.
+    pub fn limit(self, pack_limit: u32) -> u32 {
+        let own = if SUGGEST_LIMITS.contains(&self.per_hour) {
+            self.per_hour
+        } else {
+            SUGGEST_LIMITS[0]
+        };
+        own.min(pack_limit)
+    }
 }
 
 /// State terkelola Tauri: setelan di memori beserta store tempatnya disimpan.
@@ -96,7 +133,7 @@ mod tests {
 
     use nuenly_store::{KEY_LEN, Store, StoreKey};
 
-    use super::{Config, ConfigStore, LEGACY_FILE};
+    use super::{Config, ConfigStore, LEGACY_FILE, SuggestConfig};
 
     /// Folder uji sementara berisi store yang dihapus setelah test selesai.
     struct TempDir(PathBuf);
@@ -162,6 +199,27 @@ mod tests {
         assert_eq!(config.model.as_deref(), Some("gemma3:4b"));
         assert!(!dir.legacy().exists());
         assert_eq!(dir.load().get(), config);
+    }
+
+    #[test]
+    fn suggestions_are_on_by_default_and_never_exceed_the_mode_pack() {
+        let config: Config = serde_json::from_str(r#"{"privacyAccepted": 4}"#).unwrap();
+        assert_eq!(config.suggest, SuggestConfig::default());
+        assert!(config.suggest.enabled);
+        assert_eq!(config.suggest.limit(6), 6);
+        assert_eq!(config.suggest.limit(2), 2);
+
+        let fewer = SuggestConfig {
+            enabled: true,
+            per_hour: 3,
+        };
+        assert_eq!(fewer.limit(6), 3);
+        // Nilai yang tidak ditawarkan di Pengaturan, misalnya hasil edit tangan.
+        let odd = SuggestConfig {
+            enabled: true,
+            per_hour: 500,
+        };
+        assert_eq!(odd.limit(6), 1);
     }
 
     #[test]

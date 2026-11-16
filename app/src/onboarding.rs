@@ -4,9 +4,9 @@
 use tauri::{AppHandle, Manager, State};
 
 use crate::config::ConfigStore;
-use crate::foreground;
 use crate::status::{self, AppStatus};
 use crate::toast::{self, Toast, ToastContent};
+use crate::{foreground, typing};
 
 pub const LABEL: &str = "onboarding";
 
@@ -17,7 +17,9 @@ pub const LABEL: &str = "onboarding";
 /// privat.
 /// 3: aplikasi di latar depan dikenali terus-menerus (nama executable saja) untuk memilih mode.
 /// 4: catatan audit tanpa teks (aplikasi, mode, model) disimpan terenkripsi selama 30 hari.
-pub const PRIVACY_VERSION: u32 = 4;
+/// 5: perubahan isi kolom dipantau (tanpa isinya) dan kolom dibaca saat pengguna berhenti
+/// mengetik atau pindah kolom, untuk saran; saran dan tanggapannya ikut dicatat.
+pub const PRIVACY_VERSION: u32 = 5;
 
 /// Apakah pengguna sudah menyetujui pemberitahuan privasi versi ini.
 pub fn accepted(app: &AppHandle) -> bool {
@@ -54,8 +56,10 @@ pub fn onboarding_accept(
     store
         .update(|config| config.privacy_accepted = PRIVACY_VERSION)
         .map_err(|_| "Persetujuan tidak bisa disimpan. Coba lagi.".to_owned())?;
-    // Mode baru mulai mengikuti aplikasi di latar depan setelah persetujuan.
+    // Mode baru mulai mengikuti aplikasi di latar depan setelah persetujuan, begitu juga saran
+    // saat mengetik.
     foreground::sync(&app);
+    typing::refresh(&app);
     status::broadcast(&app, &status.view());
     Ok(())
 }

@@ -6,6 +6,8 @@ export interface ModeInfo {
   id: string;
   label: string;
   accent: string;
+  /** Mode ini memberi saran saat mengetik. */
+  suggests: boolean;
 }
 
 /** Bentuknya sama dengan `StatusView` di `app/src/status.rs`. */

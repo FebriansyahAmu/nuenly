@@ -5,8 +5,8 @@ import type { StatusView } from '$lib/status';
 import type { TrayBackend } from './backend';
 
 const MODES = [
-  { id: 'all', label: 'Umum', accent: '#4f46e5' },
-  { id: 'medical', label: 'Medical', accent: '#0f766e' },
+  { id: 'all', label: 'Umum', accent: '#4f46e5', suggests: true },
+  { id: 'medical', label: 'Medical', accent: '#0f766e', suggests: false },
 ];
 
 /**

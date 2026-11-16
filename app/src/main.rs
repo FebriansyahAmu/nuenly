@@ -21,6 +21,7 @@ mod store;
 mod suggest;
 mod toast;
 mod tray;
+mod typing;
 
 use std::sync::Arc;
 
@@ -37,6 +38,7 @@ fn main() -> anyhow::Result<()> {
         .manage(hardware::HardwareState::default())
         .manage(suggest::SuggestState::default())
         .manage(tray::PopupState::default())
+        .manage(typing::TypingState::default())
         .invoke_handler(tauri::generate_handler![
             answer::ask_send,
             audit::audit_clear,
@@ -49,6 +51,7 @@ fn main() -> anyhow::Result<()> {
             settings::settings_get,
             settings::settings_set_hotkey,
             settings::settings_set_model,
+            settings::settings_set_suggest,
             status::status_get,
             status::status_pause,
             status::status_resume,
@@ -85,6 +88,8 @@ fn main() -> anyhow::Result<()> {
             app.manage(hotkey::HotkeyState::register(app.handle(), shortcut));
             tray::create(app.handle())?;
             foreground::watch(app.handle());
+            // Setelah `ContextReader`, agar klien UIA pemantau dibuat sesudah klien baca konteks.
+            typing::start(app.handle());
             // Nuenly tidak membaca apa pun sampai pemberitahuan privasi disetujui.
             if !onboarding::accepted(app.handle()) {
                 onboarding::show(app.handle());

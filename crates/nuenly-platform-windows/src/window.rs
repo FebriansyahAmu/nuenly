@@ -32,7 +32,12 @@ const MAX_TITLE: usize = 32_767;
 ///
 /// [`ContextError::Platform`] bila proses pemilik jendela tidak bisa dibaca.
 pub fn foreground_window() -> Result<Option<ForegroundWindow>, ContextError> {
-    let hwnd = foreground();
+    window_info(foreground())
+}
+
+/// Identitas jendela `hwnd`, atau `None` bila jendelanya tidak ada (lagi). Seperti
+/// [`foreground_window`], hanya identitas prosesnya yang dibaca.
+pub(crate) fn window_info(hwnd: HWND) -> Result<Option<ForegroundWindow>, ContextError> {
     let Some(pid) = window_process(hwnd) else {
         return Ok(None);
     };

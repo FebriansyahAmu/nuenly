@@ -22,8 +22,10 @@ pub fn run(args: &Args) -> Result<()> {
         let _ = win_sender.send(activity);
     })
     .context("gagal memasang hook WinEvent")?;
+    // Semua aplikasi dipantau, seperti di spike; kolom kata sandi dan baca-saja tetap dilewati.
     let _uia = UiaActivity::start(move |activity| {
         let _ = sender.send(activity);
+        true
     })
     .context("gagal memasang handler UIA")?;
 

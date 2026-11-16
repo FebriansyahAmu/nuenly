@@ -13,12 +13,38 @@ use nuenly_core::{
 use crate::uia::Uia;
 use crate::window;
 
-type Job = Box<dyn FnOnce(&Uia) + Send>;
+/// Pekerjaan untuk thread UIA yang memegang `C`.
+pub(crate) type Job<C> = Box<dyn FnOnce(&mut C) + Send>;
 
-const THREAD_ERROR: ContextError = ContextError::Platform {
+pub(crate) const THREAD_ERROR: ContextError = ContextError::Platform {
     operation: "thread UIA",
     code: 0,
 };
+
+/// Mengirim `job` ke thread UIA lewat `send`, lalu menunggu hasilnya paling lama `timeout`.
+/// `send` mengembalikan `false` bila thread-nya sudah berhenti.
+///
+/// Pekerjaan yang sudah ditinggal pemanggil tidak dikerjakan, agar jendela yang mungkin sudah
+/// berganti tidak ikut dibaca.
+pub(crate) fn run_until<C: 'static, T: Send + 'static>(
+    send: impl FnOnce(Job<C>) -> bool,
+    timeout: Duration,
+    job: impl FnOnce(&mut C) -> Result<T, ContextError> + Send + 'static,
+) -> Result<T, ContextError> {
+    let deadline = Instant::now() + timeout;
+    let (reply, result) = mpsc::sync_channel(1);
+    let delivered = send(Box::new(move |context| {
+        if Instant::now() < deadline {
+            let _ = reply.send(job(context));
+        }
+    }));
+    if !delivered {
+        return Err(THREAD_ERROR);
+    }
+    result
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .map_err(|_| ContextError::Timeout)?
+}
 
 /// Sumber konteks dari UI Automation.
 ///
@@ -26,7 +52,7 @@ const THREAD_ERROR: ContextError = ContextError::Platform {
 /// thread UI bisa macet saat jendela milik proses ini sendiri ikut dibaca. Pemanggil menunggu
 /// paling lama `timeout`; aplikasi yang hang hanya membuat hasilnya terlambat lalu dibuang.
 pub struct UiaContextSource {
-    jobs: mpsc::Sender<Job>,
+    jobs: mpsc::Sender<Job<Uia>>,
     timeout: Duration,
 }
 
@@ -38,12 +64,12 @@ impl UiaContextSource {
     /// [`ContextError::Platform`] bila thread tidak bisa dibuat atau UI Automation gagal
     /// diinisialisasi.
     pub fn spawn(timeout: Duration) -> Result<Self, ContextError> {
-        let (jobs, queue) = mpsc::channel::<Job>();
+        let (jobs, queue) = mpsc::channel::<Job<Uia>>();
         let (ready, started) = mpsc::sync_channel(1);
         thread::Builder::new()
             .name("nuenly-uia".to_owned())
             .spawn(move || {
-                let uia = match Uia::new() {
+                let mut uia = match Uia::new() {
                     Ok(uia) => uia,
                     Err(err) => {
                         let _ = ready.send(Err(err));
@@ -53,7 +79,7 @@ impl UiaContextSource {
                 let _ = ready.send(Ok(()));
                 // Berhenti saat UiaContextSource di-drop.
                 for job in queue {
-                    job(&uia);
+                    job(&mut uia);
                 }
             })
             .map_err(|_| THREAD_ERROR)?;
@@ -66,20 +92,11 @@ impl UiaContextSource {
         &self,
         job: impl FnOnce(&Uia) -> Result<T, ContextError> + Send + 'static,
     ) -> Result<T, ContextError> {
-        let deadline = Instant::now() + self.timeout;
-        let (reply, result) = mpsc::sync_channel(1);
-        self.jobs
-            .send(Box::new(move |uia| {
-                // Permintaan yang sudah ditinggal pemanggil tidak dikerjakan, agar jendela yang
-                // mungkin sudah berganti tidak ikut dibaca.
-                if Instant::now() < deadline {
-                    let _ = reply.send(job(uia));
-                }
-            }))
-            .map_err(|_| THREAD_ERROR)?;
-        result
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .map_err(|_| ContextError::Timeout)?
+        run_until(
+            |work| self.jobs.send(work).is_ok(),
+            self.timeout,
+            move |uia: &mut Uia| job(uia),
+        )
     }
 }
 

@@ -7,8 +7,8 @@ import type { AuditItem, SettingsBackend, SettingsView } from './backend';
 import { PAGES, SettingsState } from './settings.svelte';
 
 const MODES = [
-  { id: 'all', label: 'Umum', accent: '#4f46e5' },
-  { id: 'medical', label: 'Medical', accent: '#0f766e' },
+  { id: 'all', label: 'Umum', accent: '#4f46e5', suggests: true },
+  { id: 'medical', label: 'Medical', accent: '#0f766e', suggests: false },
 ];
 
 /** PC pengembang: RAM 7,7 GB dan RTX 3050 6 GB. */
@@ -73,7 +73,7 @@ function withPlan(info: OllamaInfo, model: string | null): OllamaInfo {
 
 /**
  * `?halaman=general|model|privacy|connector` (bawaannya model, seperti desain 07),
- * `?ollama=running|kosong|terbuka|installed|missing`, `?otomatis`, `?jeda`, `?tanpa-aplikasi`,
+ * `?ollama=running|kosong|terbuka|installed|missing`, `?otomatis`, `?jeda`, `?tanpa-aplikasi`, `?tanpa-saran`,
  * `?pintasan=taken|failed`, `?tombol=<pintasan>` (misalnya `Alt+Space`), dan
  * `?riwayat=kosong|gagal`.
  */
@@ -85,6 +85,7 @@ export function demoSettings(params: URLSearchParams): SettingsState {
     hotkeyStatus: hotkeyStatus === 'taken' || hotkeyStatus === 'failed' ? hotkeyStatus : 'active',
     ollamaAddress: '127.0.0.1:11434',
     blockedApps: ['nuenly.exe', 'credentialuibroker.exe', 'consent.exe', 'keepass.exe', '1password.exe'],
+    suggest: { enabled: !params.has('tanpa-saran'), perHour: 6, limits: [1, 3, 6] },
   };
   let status: StatusView = {
     modes: MODES,
@@ -102,6 +103,8 @@ export function demoSettings(params: URLSearchParams): SettingsState {
       shortcut === 'Ctrl+Shift+K'
         ? Promise.reject('taken')
         : Promise.resolve((settings = { ...settings, hotkey: shortcut ?? 'Ctrl+Space', hotkeyStatus: 'active' })),
+    setSuggest: (enabled, perHour) =>
+      Promise.resolve((settings = { ...settings, suggest: { ...settings.suggest, enabled, perHour } })),
     checkOllama: () => Promise.resolve(withPlan(ollama as OllamaInfo, settings.model)),
     openDownload: () => Promise.resolve(),
     setMode: (id) => updateStatus({ activeMode: id }),

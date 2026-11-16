@@ -15,6 +15,7 @@ fn main() {
         "settings_get",
         "settings_set_hotkey",
         "settings_set_model",
+        "settings_set_suggest",
         "status_get",
         "status_pause",
         "status_resume",
