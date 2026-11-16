@@ -32,14 +32,16 @@ function backend(contextTruncated: boolean): AskBackend {
 const NOTICES: AskNotice[] = ['paused', 'notAllowed', 'privateWindow', 'banking', 'protectedField', 'unreadable'];
 
 /**
- * `?jawab` langsung menjalankan perintah contoh; `?panjang` menandai teks terpilih terpotong;
- * `?tanpa-cuplikan` meniru mode yang tidak menampilkan cuplikan; `?kosong` membuka tanpa
- * konteks; `?catatan=<alasan>` (lihat `NOTICES`) membuka tanpa konteks beserta alasannya.
+ * `?jawab` langsung menjalankan perintah contoh; `?panjang` menandai teks konteks terpotong;
+ * `?field` memakai isi field sebagai konteks, bukan teks terpilih; `?tanpa-cuplikan` meniru mode
+ * yang tidak menampilkan cuplikan; `?kosong` membuka tanpa konteks; `?catatan=<alasan>` (lihat
+ * `NOTICES`) membuka tanpa konteks beserta alasannya.
  */
 export function demoSession(params: URLSearchParams): AskSession {
   const session = new AskSession(backend(params.has('panjang')));
   const notice = NOTICES.find((candidate) => candidate === params.get('catatan')) ?? null;
-  const context = params.has('tanpa-cuplikan') ? { ...CONTEXT, preview: null } : CONTEXT;
+  const source: AskContext['source'] = params.has('field') ? 'field' : 'selection';
+  const context = { ...CONTEXT, source, ...(params.has('tanpa-cuplikan') ? { preview: null } : {}) };
   session.open(params.has('kosong') || notice !== null ? null : context, notice);
   session.prompt = PROMPT;
   if (params.has('jawab')) {

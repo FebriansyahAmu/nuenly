@@ -7,7 +7,7 @@ export interface AskContext {
   preview: string | null;
 }
 
-/** Alasan teks terpilih tidak dipakai; sama dengan `Notice` di `app/src/ask.rs`. */
+/** Alasan teks dari aplikasi tidak dipakai; sama dengan `Notice` di `app/src/ask.rs`. */
 export type AskNotice = 'paused' | 'notAllowed' | 'privateWindow' | 'banking' | 'protectedField' | 'unreadable';
 
 /** Isi event `ask:open`; sama dengan `AskOpen` di `app/src/ask.rs`. */
@@ -24,7 +24,7 @@ export interface AskRequest {
 
 /** Sama dengan `AskReply` di `app/src/answer.rs`. */
 export interface AskReply {
-  /** Teks terpilih terlalu panjang, jadi hanya bagian awalnya yang dipakai. */
+  /** Teks konteks terlalu panjang, jadi hanya sebagian yang dipakai. */
   contextTruncated: boolean;
 }
 

@@ -32,6 +32,6 @@ pub use policy::{
 };
 pub use shortcut::{Key, Shortcut};
 pub use snapshot::{CaptureKind, ContextSnapshot, ControlKind, FieldInfo, Rect};
-pub use source::{CaptureOutcome, ContextSource, capture};
+pub use source::{CaptureOutcome, ContextSource, capture, capture_first};
 pub use suggestion::{Confidence, Rejection, Suggestion};
 pub use text::{SensitiveText, TAG_PREFIX};

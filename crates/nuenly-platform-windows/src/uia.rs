@@ -1,4 +1,4 @@
-//! Pembacaan UI Automation: halaman browser dan teks terpilih untuk
+//! Pembacaan UI Automation: halaman browser, teks terpilih, dan isi field fokus untuk
 //! [`UiaContextSource`](crate::UiaContextSource), dan tree lengkap untuk diagnosis lewat
 //! `tools/uia-dump` di spike Fase 0.
 //!
@@ -15,14 +15,21 @@ use nuenly_core::{
     ForegroundWindow, ProcessName, Rect, SensitiveText, WindowHandle,
 };
 use uiautomation::patterns::{UILegacyIAccessiblePattern, UITextPattern, UIValuePattern};
-use uiautomation::types::{ControlType, Handle};
+use uiautomation::types::{ControlType, Handle, TextPatternRangeEndpoint, TextUnit};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
 
 use crate::process::process_name;
 use crate::window;
 
-/// Batas panjang teks terpilih yang dibaca per rentang, dalam unit UTF-16.
+/// Batas panjang teks terpilih atau isi field yang dibaca per rentang, dalam unit UTF-16.
 const MAX_SELECTION_LEN: i32 = 10_000;
+/// Batas panjang isi field dari Value pattern, dalam karakter; yang diambil bagian akhirnya.
+const MAX_FIELD_CHARS: usize = 10_000;
+/// Panjang label field, dalam karakter.
+const MAX_LABEL_CHARS: usize = 100;
+/// Paragraf sebelum dan sesudah paragraf caret yang ikut dibaca dari dokumen.
+const PARAGRAPHS_BEFORE_CARET: i32 = 3;
+const PARAGRAPHS_AFTER_CARET: i32 = 1;
 /// Batas pencarian address bar: cukup untuk toolbar browser, tanpa masuk ke isi halaman.
 const ADDRESS_BAR_DEPTH: usize = 10;
 const ADDRESS_BAR_NODES: usize = 400;
@@ -310,27 +317,12 @@ impl Uia {
     ///
     /// # Errors
     ///
-    /// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan,
-    /// [`ContextError::Unsupported`] bila elemen fokus milik proses lain di jendela yang sama
-    /// (misalnya aplikasi UWP di dalam `ApplicationFrameHost`), atau error platform lain.
+    /// Seperti [`focused_in`](Self::focused_in).
     pub(crate) fn read_selection(
         &self,
         window: &ForegroundWindow,
     ) -> Result<Option<ContextSnapshot>, ContextError> {
-        let hwnd = window::foreground();
-        if window::handle(hwnd) != window.handle {
-            return Err(ContextError::ForegroundChanged);
-        }
-        let pid = window::window_process(hwnd).ok_or(ContextError::ForegroundChanged)?;
-        let element = self
-            .automation
-            .get_focused_element()
-            .map_err(uia_error("GetFocusedElement"))?;
-        // Isi hanya dibaca dari proses yang sudah diizinkan filter aplikasi.
-        if element.get_process_id().map_err(uia_error("ProcessId"))? != pid {
-            return Err(ContextError::Unsupported);
-        }
-
+        let element = self.focused_in(window)?;
         // Bila tidak bisa dipastikan, anggap field kata sandi agar teksnya tidak dibaca.
         let is_password = element.is_password().unwrap_or(true);
         let text = if is_password {
@@ -354,6 +346,72 @@ impl Uia {
             }),
             text,
         }))
+    }
+
+    /// Membaca isi field yang sedang fokus di `window` beserta labelnya. `None` bila elemen
+    /// fokus tidak mengekspos teks lewat Value atau Text pattern.
+    ///
+    /// Dari dokumen panjang (misalnya Word), yang dibaca hanya paragraf di sekitar caret. Dari
+    /// field biasa yang sangat panjang, bagian akhirnya. Judul jendela tidak dibaca, dan dari
+    /// field kata sandi tidak ada yang dibaca.
+    ///
+    /// # Errors
+    ///
+    /// Seperti [`focused_in`](Self::focused_in).
+    pub(crate) fn read_field(
+        &self,
+        window: &ForegroundWindow,
+    ) -> Result<Option<ContextSnapshot>, ContextError> {
+        let element = self.focused_in(window)?;
+        // Bila tidak bisa dipastikan, anggap field kata sandi agar isinya tidak dibaca.
+        let is_password = element.is_password().unwrap_or(true);
+        let control = control_kind(&element);
+        let (text, label) = if is_password {
+            (SensitiveText::default(), None)
+        } else {
+            let Some(text) = field_text(&element, control) else {
+                return Ok(None);
+            };
+            let label = label(&element, &text);
+            (text, label)
+        };
+        Ok(Some(ContextSnapshot {
+            app: window.app.clone(),
+            window_title: SensitiveText::default(),
+            kind: CaptureKind::FocusedField,
+            field: Some(FieldInfo {
+                label,
+                control,
+                is_password,
+                bounds: None,
+            }),
+            text,
+        }))
+    }
+
+    /// Elemen yang sedang fokus, setelah memastikan `window` masih di latar depan dan elemen
+    /// itu milik prosesnya.
+    ///
+    /// # Errors
+    ///
+    /// [`ContextError::ForegroundChanged`] bila `window` sudah tidak di latar depan,
+    /// [`ContextError::Unsupported`] bila elemen fokus milik proses lain di jendela yang sama
+    /// (misalnya aplikasi UWP di dalam `ApplicationFrameHost`), atau error platform lain.
+    fn focused_in(&self, window: &ForegroundWindow) -> Result<UIElement, ContextError> {
+        let hwnd = window::foreground();
+        if window::handle(hwnd) != window.handle {
+            return Err(ContextError::ForegroundChanged);
+        }
+        let pid = window::window_process(hwnd).ok_or(ContextError::ForegroundChanged)?;
+        let element = self
+            .automation
+            .get_focused_element()
+            .map_err(uia_error("GetFocusedElement"))?;
+        // Isi hanya dibaca dari proses yang sudah diizinkan filter aplikasi.
+        if element.get_process_id().map_err(uia_error("ProcessId"))? != pid {
+            return Err(ContextError::Unsupported);
+        }
+        Ok(element)
     }
 
     fn children(&self, element: &UIElement) -> Result<Vec<UIElement>, ContextError> {
@@ -473,6 +531,87 @@ fn selection(element: &UIElement) -> Option<SensitiveText> {
     Some(SensitiveText::new(text))
 }
 
+/// Isi field: paragraf di sekitar caret untuk dokumen, nilai Value pattern untuk field biasa,
+/// atau awal Text pattern bila keduanya tidak ada.
+fn field_text(element: &UIElement, control: ControlKind) -> Option<SensitiveText> {
+    if control == ControlKind::Document
+        && let Some(text) = around_caret(element)
+    {
+        return Some(text);
+    }
+    if let Some(text) = value(element) {
+        return Some(tail(&text, MAX_FIELD_CHARS));
+    }
+    let text = element
+        .get_pattern::<UITextPattern>()
+        .ok()?
+        .get_document_range()
+        .ok()?
+        .get_text(MAX_SELECTION_LEN)
+        .ok()?;
+    Some(SensitiveText::new(text))
+}
+
+/// Paragraf caret ditambah beberapa paragraf sebelumnya dan sesudahnya, lewat Text pattern 2.
+fn around_caret(element: &UIElement) -> Option<SensitiveText> {
+    let (_, range) = element
+        .get_pattern::<UITextPattern>()
+        .ok()?
+        .get_caret_range()
+        .ok()?;
+    range.expand_to_enclosing_unit(TextUnit::Paragraph).ok()?;
+    // Gagal bergeser berarti sudah di awal atau akhir dokumen; rentangnya tetap dipakai.
+    let _ = range.move_endpoint_by_unit(
+        TextPatternRangeEndpoint::Start,
+        TextUnit::Paragraph,
+        -PARAGRAPHS_BEFORE_CARET,
+    );
+    let _ = range.move_endpoint_by_unit(
+        TextPatternRangeEndpoint::End,
+        TextUnit::Paragraph,
+        PARAGRAPHS_AFTER_CARET,
+    );
+    range
+        .get_text(MAX_SELECTION_LEN)
+        .ok()
+        .map(SensitiveText::new)
+}
+
+/// Bagian akhir `text` paling banyak `max_chars` karakter: yang sedang diketik biasanya di
+/// akhir field.
+fn tail(text: &SensitiveText, max_chars: usize) -> SensitiveText {
+    let text = text.expose();
+    let count = text.chars().count();
+    if count <= max_chars {
+        return SensitiveText::new(text);
+    }
+    SensitiveText::new(text.chars().skip(count - max_chars).collect::<String>())
+}
+
+/// Label field: nama elemen `LabeledBy`, atau nama field itu sendiri bila bukan salinan isinya.
+fn label(element: &UIElement, text: &SensitiveText) -> Option<SensitiveText> {
+    let labeled_by = element
+        .get_labeled_by()
+        .ok()
+        .and_then(|label| label.get_name().ok());
+    let own_name = || {
+        element
+            .get_name()
+            .ok()
+            .filter(|name| name.trim() != text.expose().trim())
+    };
+    let name = labeled_by
+        .filter(|name| !name.trim().is_empty())
+        .or_else(own_name)
+        .filter(|name| !name.trim().is_empty())?;
+    Some(SensitiveText::new(
+        name.trim()
+            .chars()
+            .take(MAX_LABEL_CHARS)
+            .collect::<String>(),
+    ))
+}
+
 /// UIA mengembalikan null (kode 0) bila elemen tidak ada; itu menjadi `Ok(None)`.
 fn optional(
     result: uiautomation::Result<UIElement>,
@@ -492,5 +631,20 @@ fn uia_error(operation: &'static str) -> impl FnOnce(uiautomation::Error) -> Con
     move |err| ContextError::Platform {
         operation,
         code: err.code(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nuenly_core::SensitiveText;
+
+    use super::tail;
+
+    #[test]
+    fn long_fields_keep_their_end() {
+        let text = SensitiveText::new("awal sintetis, akhir yang sedang diketik");
+        assert_eq!(tail(&text, 100).expose(), text.expose());
+        assert_eq!(tail(&text, 9).expose(), "g diketik");
+        assert_eq!(tail(&SensitiveText::new("éééé"), 2).expose(), "éé");
     }
 }

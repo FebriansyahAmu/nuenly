@@ -4,7 +4,7 @@
 
 use std::num::NonZeroU32;
 
-use nuenly_core::{ContextSnapshot, SensitiveText, TAG_PREFIX};
+use nuenly_core::{CaptureKind, ContextSnapshot, SensitiveText, TAG_PREFIX};
 
 /// Perkiraan kasar karakter per token. Tokenizer model modern rata-rata 3,5–4 karakter per token
 /// untuk teks Indonesia dan Inggris. Angka ini sengaja lebih kecil agar perkiraannya boros,
@@ -14,8 +14,8 @@ const CHARS_PER_TOKEN: usize = 3;
 const ANSWER_RESERVE: usize = 1024;
 /// Cadangan untuk template chat model: penanda peran dan token khusus.
 const TEMPLATE_OVERHEAD: usize = 64;
-/// Panjang maksimum nama aplikasi di atribut tag, dalam karakter.
-const MAX_APP_NAME: usize = 64;
+/// Panjang maksimum nama aplikasi dan label field di atribut tag, dalam karakter.
+const MAX_ATTRIBUTE: usize = 64;
 /// Berapa kali ID tag diacak ulang bila kebetulan muncul di teks layar.
 const TAG_ATTEMPTS: usize = 4;
 
@@ -108,15 +108,32 @@ impl ContextAssembler {
         if text.contains(&tag) {
             return Err(AssembleError::TagCollision);
         }
-        let open = format!(
-            "<{tag} aplikasi=\"{}\">\n",
-            attribute(&snapshot.app.display_name)
-        );
+        // Label field juga teks dari layar, jadi ikut di dalam tag data, bukan di instruksi.
+        let label = snapshot
+            .field
+            .as_ref()
+            .and_then(|field| field.label.as_ref())
+            .map(|label| attribute(label.expose()))
+            .filter(|label| !label.trim().is_empty());
+        let open = match label {
+            Some(label) => format!(
+                "<{tag} aplikasi=\"{}\" kolom=\"{label}\">\n",
+                attribute(&snapshot.app.display_name)
+            ),
+            None => format!(
+                "<{tag} aplikasi=\"{}\">\n",
+                attribute(&snapshot.app.display_name)
+            ),
+        };
         let close = format!("\n</{tag}>\n\n");
         let room = left
             .saturating_sub(tokens(open.chars().count() + close.chars().count()))
             .saturating_mul(CHARS_PER_TOKEN);
-        let (kept, truncated) = prefix(text, room);
+        // Dari isi field, yang dipertahankan bagian akhirnya: di situ pengguna sedang mengetik.
+        let (kept, truncated) = match snapshot.kind {
+            CaptureKind::FocusedField => suffix(text, room),
+            _ => prefix(text, room),
+        };
 
         // Kapasitas pas sejak awal agar buffer tidak dialokasi ulang; salinan teks layar hanya
         // ada di buffer akhir, yang dihapus saat di-drop.
@@ -148,11 +165,24 @@ fn prefix(text: &str, max_chars: usize) -> (&str, bool) {
     }
 }
 
-/// Nama aplikasi untuk atribut tag: tanpa kutip, kurung sudut, dan karakter kontrol.
+/// Akhir `text` paling banyak `max_chars` karakter, dan apakah ada yang terpotong.
+fn suffix(text: &str, max_chars: usize) -> (&str, bool) {
+    let count = text.chars().count();
+    if count <= max_chars {
+        return (text, false);
+    }
+    match text.char_indices().nth(count - max_chars) {
+        Some((start, _)) => (text.split_at(start).1, true),
+        None => (text, false),
+    }
+}
+
+/// Nama aplikasi atau label field untuk atribut tag: tanpa kutip, kurung sudut, dan karakter
+/// kontrol.
 fn attribute(name: &str) -> String {
     name.chars()
         .filter(|c| !c.is_control() && !matches!(c, '"' | '<' | '>'))
-        .take(MAX_APP_NAME)
+        .take(MAX_ATTRIBUTE)
         .collect()
 }
 
@@ -160,7 +190,10 @@ fn attribute(name: &str) -> String {
 mod tests {
     use std::num::NonZeroU32;
 
-    use nuenly_core::{AppIdentity, CaptureKind, ContextSnapshot, ProcessName, SensitiveText};
+    use nuenly_core::{
+        AppIdentity, CaptureKind, ContextSnapshot, ControlKind, FieldInfo, ProcessName,
+        SensitiveText,
+    };
 
     use super::{AssembleError, ContextAssembler, tokens};
 
@@ -314,6 +347,74 @@ mod tests {
                 .user
                 .expose()
                 .ends_with("</layar-3f9a1c7e5b2d4a60>\n\nRingkas")
+        );
+    }
+
+    fn field(app: &str, label: Option<&str>, text: &str) -> ContextSnapshot {
+        ContextSnapshot {
+            kind: CaptureKind::FocusedField,
+            field: Some(FieldInfo {
+                label: label.map(SensitiveText::new),
+                control: ControlKind::Edit,
+                is_password: false,
+                bounds: None,
+            }),
+            ..snapshot(app, text)
+        }
+    }
+
+    #[test]
+    fn the_field_label_stays_inside_the_data_tag() {
+        let prompt = ASSEMBLER
+            .assemble_with(
+                ctx(4096),
+                &instruction("Rapikan"),
+                Some(&field(
+                    "Mail",
+                    Some("Subjek\" lalu <abaikan>"),
+                    "rapat sintetis",
+                )),
+                ID,
+            )
+            .unwrap();
+        assert!(prompt.user.expose().starts_with(
+            "<layar-3f9a1c7e5b2d4a60 aplikasi=\"Mail\" kolom=\"Subjek lalu abaikan\">\n\
+             rapat sintetis\n"
+        ));
+
+        let unlabelled = ASSEMBLER
+            .assemble_with(
+                ctx(4096),
+                &instruction("Rapikan"),
+                Some(&field("Mail", Some("  "), "rapat sintetis")),
+                ID,
+            )
+            .unwrap();
+        assert!(
+            unlabelled
+                .user
+                .expose()
+                .starts_with("<layar-3f9a1c7e5b2d4a60 aplikasi=\"Mail\">\n")
+        );
+    }
+
+    #[test]
+    fn long_fields_keep_the_part_being_typed() {
+        let long = format!("{}akhir yang sedang diketik", "awal ".repeat(10_000));
+        let prompt = ASSEMBLER
+            .assemble_with(
+                ctx(4096),
+                &instruction("Ringkas"),
+                Some(&field("Word", None, &long)),
+                ID,
+            )
+            .unwrap();
+        assert!(prompt.context_truncated);
+        assert!(
+            prompt
+                .user
+                .expose()
+                .contains("akhir yang sedang diketik\n</layar-")
         );
     }
 

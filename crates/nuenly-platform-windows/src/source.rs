@@ -102,12 +102,10 @@ impl ContextSource for UiaContextSource {
         permit: &ReadPermit<'_>,
         kind: CaptureKind,
     ) -> Result<Option<ContextSnapshot>, ContextError> {
+        let window = permit.window().clone();
         match kind {
-            CaptureKind::SelectedText => {
-                let window = permit.window().clone();
-                self.run(move |uia| uia.read_selection(&window))
-            }
-            // Isi field fokus baru dibutuhkan saran proaktif (F-09, Fase 2).
+            CaptureKind::SelectedText => self.run(move |uia| uia.read_selection(&window)),
+            CaptureKind::FocusedField => self.run(move |uia| uia.read_field(&window)),
             _ => Err(ContextError::Unsupported),
         }
     }

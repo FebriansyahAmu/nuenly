@@ -1,5 +1,6 @@
 //! Jendela Tanya Nuenly (F-22, US-1): overlay redup di layar kerja tempat kursor berada.
-//! Hotkey (F-03) membukanya dengan teks terpilih di aplikasi aktif sebagai konteks (F-02).
+//! Hotkey (F-03) membukanya dengan teks terpilih di aplikasi aktif sebagai konteks, atau isi
+//! field fokus bila tidak ada yang dipilih (F-02).
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
@@ -64,7 +65,7 @@ impl AskState {
 #[serde(rename_all = "camelCase")]
 pub struct AskOpen {
     pub context: Option<ContextView>,
-    /// Alasan teks terpilih tidak dipakai, bila perlu diberitahukan.
+    /// Alasan teks dari aplikasi tidak dipakai, bila perlu diberitahukan.
     pub notice: Option<Notice>,
 }
 
@@ -81,7 +82,7 @@ pub struct ContextView {
     pub preview: Option<String>,
 }
 
-/// Panjang cuplikan teks terpilih yang dikirim ke jendela, dalam karakter.
+/// Panjang cuplikan teks konteks yang dikirim ke jendela, dalam karakter.
 const PREVIEW_CHARS: usize = 200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -113,18 +114,23 @@ pub fn on_hotkey(app: &AppHandle) {
         closed(app);
         return;
     }
-    // Teks terpilih hanya dibaca setelah "Saya mengerti" di onboarding.
+    // Teks dari aplikasi hanya dibaca setelah "Saya mengerti" di onboarding.
     if !onboarding::ensure_accepted(app) {
         return;
     }
     // Dibaca sebelum jendela tampil, karena setelah itu fokus sudah pindah ke Nuenly.
-    let (context, open) = read_selection(app);
+    let (context, open) = read_context(app);
     let read = pressed.elapsed();
+    let source = open
+        .context
+        .as_ref()
+        .map_or("none", |context| context.source);
     let _ = show(app, context, &open);
     // Target PRD: tampil ≤ 150 ms setelah hotkey. Diukur sampai Windows menampilkan jendela.
     tracing::info!(
         read_ms = logging::millis(read),
         shown_ms = logging::millis(pressed.elapsed()),
+        source,
         "Tanya Nuenly tampil setelah hotkey"
     );
 }
@@ -143,7 +149,7 @@ pub fn closed(app: &AppHandle) {
     app.state::<AskState>().replace(None);
 }
 
-fn read_selection(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
+fn read_context(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
     // Jendela Nuenly sendiri tidak pernah dibaca; dari sana Tanya Nuenly dibuka tanpa konteks.
     let own_window_focused = app
         .webview_windows()
@@ -163,7 +169,7 @@ fn read_selection(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
         return (None, open);
     };
     prepare(
-        app.state::<ContextReader>().selection(&policy),
+        app.state::<ContextReader>().for_ask(&policy),
         policy.context_preview,
     )
 }
@@ -190,7 +196,7 @@ fn prepare(
             };
             return (Some(snapshot), open);
         }
-        // Tidak ada teks terpilih: bertanya tanpa konteks adalah hal biasa.
+        // Tidak ada teks terpilih maupun isi field: bertanya tanpa konteks adalah hal biasa.
         Ok(CaptureOutcome::NoWindow | CaptureOutcome::Empty) => None,
         Ok(CaptureOutcome::NotAllowed(_)) => Some(Notice::NotAllowed),
         Ok(CaptureOutcome::Sensitive(SensitivePage::PrivateWindow)) => Some(Notice::PrivateWindow),
@@ -264,10 +270,11 @@ fn show(app: &AppHandle, context: Option<ContextSnapshot>, open: &AskOpen) -> ta
 mod tests {
     use nuenly_core::{
         ActivePolicy, AppFilter, AppIdentity, CaptureKind, ContextError, ControlKind,
-        FakeContextSource, FieldInfo, ModeId, ProcessName, capture,
+        FakeContextSource, FieldInfo, ModeId, ProcessName, capture, capture_first,
     };
 
     use super::{ContextView, Notice, PREVIEW_CHARS, prepare, preview};
+    use crate::context::ASK_KINDS;
 
     fn app(process: &str, display_name: &str) -> AppIdentity {
         AppIdentity {
@@ -282,7 +289,7 @@ mod tests {
 
     fn read(source: &FakeContextSource, policy: &ActivePolicy) -> super::AskOpen {
         let (context, open) = prepare(
-            capture(source, policy, CaptureKind::SelectedText),
+            capture_first(source, policy, ASK_KINDS),
             policy.context_preview,
         );
         // Teks hanya disimpan bersama konteks yang ditampilkan di chip.
@@ -343,6 +350,35 @@ mod tests {
         assert_eq!(preview(""), "");
     }
 
+    fn field(is_password: bool) -> FieldInfo {
+        FieldInfo {
+            label: None,
+            control: ControlKind::Edit,
+            is_password,
+            bounds: None,
+        }
+    }
+
+    #[test]
+    fn without_a_selection_the_focused_field_is_the_context() {
+        let mut umum = policy();
+        umum.context_preview = true;
+        let source = FakeContextSource::new()
+            .with_foreground(app("notepad.exe", "Notepad"), "catatan.txt")
+            .with_focused_field(field(false), "isi field sintetis");
+        let (context, open) = prepare(capture_first(&source, &umum, ASK_KINDS), true);
+
+        assert_eq!(context.unwrap().kind, CaptureKind::FocusedField);
+        assert_eq!(
+            open.context,
+            Some(ContextView {
+                source: "field",
+                app_name: "Notepad".to_owned(),
+                preview: Some("isi field sintetis".to_owned()),
+            })
+        );
+    }
+
     #[test]
     fn nothing_selected_opens_without_a_notice() {
         let source = FakeContextSource::new().with_foreground(app("notepad.exe", "Notepad"), "");
@@ -365,21 +401,11 @@ mod tests {
             .with_selection("teks sintetis");
         assert_eq!(read(&outlook, &blocking).notice, Some(Notice::NotAllowed));
 
+        // Tanpa teks terpilih, Nuenly beralih ke field fokus, dan field kata sandi tetap ditolak.
         let password = FakeContextSource::new()
-            .with_foreground(app("chrome.exe", "Chrome"), "Masuk")
-            .with_focused_field(
-                FieldInfo {
-                    label: None,
-                    control: ControlKind::Edit,
-                    is_password: true,
-                    bounds: None,
-                },
-                "sandi-sintetis",
-            );
-        let (context, open) = prepare(
-            capture(&password, &policy(), CaptureKind::FocusedField),
-            false,
-        );
+            .with_foreground(app("notepad.exe", "Notepad"), "Masuk")
+            .with_focused_field(field(true), "sandi-sintetis");
+        let (context, open) = prepare(capture_first(&password, &policy(), ASK_KINDS), false);
         assert!(context.is_none());
         assert_eq!(open.notice, Some(Notice::ProtectedField));
     }

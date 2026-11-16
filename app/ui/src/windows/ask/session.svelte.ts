@@ -7,13 +7,13 @@ const GENERIC_ERROR = 'Nuenly tidak bisa menjawab sekarang. Coba lagi sebentar l
 /** Status satu sesi Tanya Nuenly, dari jendela dibuka sampai ditutup. */
 export class AskSession {
   context = $state<AskContext | null>(null);
-  /** Kenapa teks terpilih tidak dipakai, misalnya karena Nuenly dijeda. */
+  /** Kenapa teks dari aplikasi tidak dipakai, misalnya karena Nuenly dijeda. */
   notice = $state<AskNotice | null>(null);
   prompt = $state('');
   answer = $state('');
   phase = $state<AskPhase>('idle');
   error = $state<string | null>(null);
-  /** Hanya bagian awal teks terpilih yang dipakai karena terlalu panjang. */
+  /** Hanya sebagian teks konteks yang dipakai karena terlalu panjang. */
   contextTruncated = $state(false);
 
   #backend: AskBackend;

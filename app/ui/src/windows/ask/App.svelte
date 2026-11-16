@@ -25,12 +25,19 @@
   const MAX_PROMPT = 2000;
 
   const NOTICE: Record<AskNotice, string> = {
-    paused: 'Nuenly sedang dijeda, jadi teks terpilih tidak dibaca.',
+    paused: 'Nuenly sedang dijeda, jadi teks dari aplikasi tidak dibaca.',
     notAllowed: 'Nuenly tidak membaca aplikasi ini.',
     privateWindow: 'Nuenly tidak membaca jendela privat.',
     banking: 'Nuenly tidak membaca situs perbankan.',
     protectedField: 'Isi field kata sandi tidak dibaca.',
-    unreadable: 'Teks terpilih tidak bisa dibaca dari aplikasi ini.',
+    unreadable: 'Teks tidak bisa dibaca dari aplikasi ini.',
+  };
+
+  // Dari teks terpilih yang dipakai bagian awalnya; dari isi field, bagian akhirnya (yang sedang
+  // diketik), sama dengan `ContextAssembler` di Rust.
+  const TRUNCATED: Record<AskContext['source'], string> = {
+    selection: 'Teks terpilih terlalu panjang, jadi hanya bagian awalnya yang dipakai.',
+    field: 'Isi field terlalu panjang, jadi hanya bagian akhirnya yang dipakai.',
   };
 
   let input = $state<HTMLInputElement>();
@@ -174,7 +181,7 @@
         </div>
         {#if session.phase === 'done' && session.contextTruncated}
           <p class="text-[13px] text-muted-foreground">
-            Teks terpilih terlalu panjang, jadi hanya bagian awalnya yang dipakai.
+            {TRUNCATED[session.context?.source ?? 'selection']}
           </p>
         {/if}
       {/if}

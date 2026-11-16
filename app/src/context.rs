@@ -5,10 +5,10 @@
 use std::time::Duration;
 
 use nuenly_core::{
-    ActivePolicy, CaptureKind, CaptureOutcome, ContextError, ContextSource, capture,
+    ActivePolicy, CaptureKind, CaptureOutcome, ContextError, ContextSource, capture, capture_first,
 };
 
-/// Batas tunggu membaca teks terpilih. Target PRD baca UIA ≤ 50 ms; sisanya cadangan untuk
+/// Batas tunggu satu pembacaan (teks terpilih atau isi field). Target PRD baca UIA ≤ 50 ms; sisanya cadangan untuk
 /// aplikasi yang lambat menjawab, sebelum Tanya Nuenly tetap dibuka tanpa konteks.
 #[cfg(windows)]
 const READ_TIMEOUT: Duration = Duration::from_millis(250);
@@ -36,4 +36,16 @@ impl ContextReader {
             None => Err(ContextError::Unsupported),
         }
     }
+
+    /// Konteks Tanya Nuenly: teks terpilih, atau isi field fokus bila tidak ada yang dipilih.
+    /// Blocking, paling lama sekitar dua kali batas tunggu sumbernya.
+    pub fn for_ask(&self, policy: &ActivePolicy) -> Result<CaptureOutcome, ContextError> {
+        match &self.0 {
+            Some(source) => capture_first(source.as_ref(), policy, ASK_KINDS),
+            None => Err(ContextError::Unsupported),
+        }
+    }
 }
+
+/// Urutan baca Tanya Nuenly: teks terpilih lebih dulu, lalu isi field fokus.
+pub const ASK_KINDS: &[CaptureKind] = &[CaptureKind::SelectedText, CaptureKind::FocusedField];

@@ -82,6 +82,24 @@ pub fn capture<S>(
 where
     S: ContextSource + ?Sized,
 {
+    capture_first(source, policy, &[kind])
+}
+
+/// Seperti [`capture`], tetapi mencoba `kinds` berurutan dan memakai yang pertama berisi teks,
+/// misalnya teks terpilih lalu isi field fokus. Filter aplikasi dan halaman browser hanya
+/// diperiksa sekali. Field kata sandi menghentikan pencarian.
+///
+/// # Errors
+///
+/// Seperti [`capture`].
+pub fn capture_first<S>(
+    source: &S,
+    policy: &ActivePolicy,
+    kinds: &[CaptureKind],
+) -> Result<CaptureOutcome, ContextError>
+where
+    S: ContextSource + ?Sized,
+{
     let Some(window) = source.foreground_window()? else {
         return Ok(CaptureOutcome::NoWindow);
     };
@@ -94,29 +112,30 @@ where
             return Ok(CaptureOutcome::Sensitive(reason));
         }
     }
-    let Some(snapshot) = source.read(&permit, kind)? else {
-        return Ok(CaptureOutcome::Empty);
-    };
-
-    if snapshot.app.process != permit.window().app.process {
-        return Err(ContextError::ForegroundChanged);
+    for &kind in kinds {
+        let Some(snapshot) = source.read(&permit, kind)? else {
+            continue;
+        };
+        if snapshot.app.process != permit.window().app.process {
+            return Err(ContextError::ForegroundChanged);
+        }
+        if snapshot
+            .field
+            .as_ref()
+            .is_some_and(|field| field.is_password)
+        {
+            return Ok(CaptureOutcome::ProtectedField);
+        }
+        if !snapshot.text.is_empty() {
+            return Ok(CaptureOutcome::Captured(snapshot));
+        }
     }
-    if snapshot
-        .field
-        .as_ref()
-        .is_some_and(|field| field.is_password)
-    {
-        return Ok(CaptureOutcome::ProtectedField);
-    }
-    if snapshot.text.is_empty() {
-        return Ok(CaptureOutcome::Empty);
-    }
-    Ok(CaptureOutcome::Captured(snapshot))
+    Ok(CaptureOutcome::Empty)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CaptureOutcome, capture};
+    use super::{CaptureOutcome, capture, capture_first};
     use crate::app::{AppIdentity, ProcessName};
     use crate::browser::SensitivePage;
     use crate::error::ContextError;
@@ -321,5 +340,67 @@ mod tests {
             let outcome = capture(&source, &policy(), CaptureKind::SelectedText).unwrap();
             assert_eq!(outcome, CaptureOutcome::Empty);
         }
+    }
+
+    const SELECTION_THEN_FIELD: &[CaptureKind] =
+        &[CaptureKind::SelectedText, CaptureKind::FocusedField];
+
+    #[test]
+    fn the_field_is_read_when_nothing_is_selected() {
+        let blank = FakeContextSource::new()
+            .with_foreground(app("notepad.exe", "Notepad"), "")
+            .with_selection("")
+            .with_focused_field(field(false), "isi field sintetis");
+        let outcome = capture_first(&blank, &policy(), SELECTION_THEN_FIELD).unwrap();
+        let CaptureOutcome::Captured(snapshot) = outcome else {
+            panic!("seharusnya Captured, dapat {outcome:?}");
+        };
+        assert_eq!(snapshot.kind, CaptureKind::FocusedField);
+        assert_eq!(snapshot.text.expose(), "isi field sintetis");
+        // Pemeriksaan halaman browser tidak diulang untuk setiap jenis.
+        assert_eq!(blank.read_count(), 2);
+    }
+
+    #[test]
+    fn a_selection_wins_over_the_field() {
+        let source = FakeContextSource::new()
+            .with_foreground(app("notepad.exe", "Notepad"), "")
+            .with_selection("teks terpilih sintetis")
+            .with_focused_field(field(false), "isi field sintetis");
+        let outcome = capture_first(&source, &policy(), SELECTION_THEN_FIELD).unwrap();
+        assert!(matches!(
+            outcome,
+            CaptureOutcome::Captured(s) if s.kind == CaptureKind::SelectedText
+        ));
+        assert_eq!(source.read_count(), 1);
+    }
+
+    #[test]
+    fn checks_still_apply_when_falling_back_to_the_field() {
+        let password = FakeContextSource::new()
+            .with_foreground(app("chrome.exe", "Google Chrome"), "")
+            .with_browser_page(&["Masuk"], None)
+            .with_focused_field(field(true), "sandi-sintetis");
+        assert_eq!(
+            capture_first(&password, &policy(), SELECTION_THEN_FIELD).unwrap(),
+            CaptureOutcome::ProtectedField
+        );
+        assert_eq!(password.page_read_count(), 1);
+
+        let private = FakeContextSource::new()
+            .with_foreground(app("msedge.exe", "Microsoft Edge"), "")
+            .with_browser_page(&["Tab baru - [InPrivate] - Microsoft Edge"], None)
+            .with_focused_field(field(false), "isi field sintetis");
+        assert!(matches!(
+            capture_first(&private, &policy(), SELECTION_THEN_FIELD).unwrap(),
+            CaptureOutcome::Sensitive(SensitivePage::PrivateWindow)
+        ));
+        assert_eq!(private.read_count(), 0);
+
+        let nothing = FakeContextSource::new().with_foreground(app("notepad.exe", "Notepad"), "");
+        assert_eq!(
+            capture_first(&nothing, &policy(), SELECTION_THEN_FIELD).unwrap(),
+            CaptureOutcome::Empty
+        );
     }
 }
