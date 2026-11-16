@@ -12,6 +12,7 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+    SetForegroundWindow,
 };
 use windows::core::HSTRING;
 use zeroize::Zeroizing;
@@ -60,6 +61,18 @@ pub(crate) fn foreground() -> HWND {
 
 pub(crate) fn handle(hwnd: HWND) -> WindowHandle {
     WindowHandle(hwnd.0.addr() as u64)
+}
+
+/// Mengembalikan jendela `handle` ke latar depan, hanya untuk Ganti teks (F-23). Windows hanya
+/// mengizinkannya selagi proses ini di latar depan, yaitu tepat setelah pengguna mengklik
+/// jendela Nuenly. `false` bila ditolak atau jendelanya sudah tidak ada.
+pub(crate) fn activate(handle: WindowHandle) -> bool {
+    let Ok(address) = usize::try_from(handle.0) else {
+        return false;
+    };
+    let hwnd = HWND(std::ptr::without_provenance_mut(address));
+    // SAFETY: tanpa prasyarat; handle yang sudah tidak valid hanya membuat panggilan gagal.
+    unsafe { SetForegroundWindow(hwnd) }.as_bool()
 }
 
 /// Judul native jendela. Teks layar, jadi hanya dipakai untuk memeriksa halaman browser.

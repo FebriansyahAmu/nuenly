@@ -91,7 +91,7 @@ pub async fn ask_send(
 ) -> Result<AskReply, AskFailure> {
     let started = Instant::now();
     let instruction = SensitiveText::new(prompt);
-    let stopped = ask.begin_answer();
+    let (stopped, answer_id) = ask.begin_answer();
     let context = ask.context(use_context);
     if instruction.expose().trim().is_empty() {
         return Err(AskFailure::Failed);
@@ -123,8 +123,12 @@ pub async fn ask_send(
     request.keep_alive = Some(plan.keep_alive);
 
     let mut first_token = None;
+    // Jawaban utuh tetap di Rust untuk Ganti teks, agar yang ditempel ke aplikasi lain selalu
+    // jawaban model, bukan teks kiriman jendela.
+    let mut answer = String::new();
     let mut on_token = |token: &str| {
         first_token.get_or_insert_with(|| started.elapsed());
+        answer.push_str(token);
         let _ = channel.send(AnswerEvent::Token {
             text: token.to_owned(),
         });
@@ -155,6 +159,7 @@ pub async fn ask_send(
         "jawaban Tanya Nuenly"
     );
     result?;
+    ask.finish_answer(answer_id, SensitiveText::new(answer));
     let _ = channel.send(AnswerEvent::End);
     Ok(AskReply { context_truncated })
 }

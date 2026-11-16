@@ -39,6 +39,23 @@ export function failureMessage(error: unknown): string | null {
   return typeof error === 'string' && Object.hasOwn(FAILURE, error) ? FAILURE[error as AskFailure] : null;
 }
 
+/** Sama dengan `ReplaceFailure` di `app/src/replace.rs`. */
+export type ReplaceFailure = 'unavailable' | 'changed' | 'moved' | 'failed';
+
+const REPLACE_FAILURE: Record<ReplaceFailure, string> = {
+  unavailable: 'Teks ini tidak bisa diganti lagi. Salin jawabannya bila masih perlu.',
+  changed: 'Teks di aplikasi sudah berubah sejak dibaca, jadi tidak diganti. Salin jawabannya bila masih perlu.',
+  moved: 'Jendela asalnya tidak bisa dibuka lagi. Salin jawabannya, lalu tempel sendiri.',
+  failed: 'Teks tidak bisa diganti. Salin jawabannya, lalu tempel sendiri.',
+};
+
+/** Pesan untuk pengguna dari kode gagal `ask_replace`; selain kode yang dikenal, pesan umum. */
+export function replaceFailureMessage(error: unknown): string {
+  return typeof error === 'string' && Object.hasOwn(REPLACE_FAILURE, error)
+    ? REPLACE_FAILURE[error as ReplaceFailure]
+    : REPLACE_FAILURE.failed;
+}
+
 /** Jawaban dari Ollama lewat command `ask_send`; token mengalir lewat `Channel`. */
 export const tauriBackend: AskBackend = {
   async ask(request, onToken) {
@@ -67,5 +84,13 @@ export const tauriBackend: AskBackend = {
     // Balasan command bisa tiba lebih dulu dari token terakhir; tunggu penanda akhir channel.
     await end;
     return reply;
+  },
+
+  async replace() {
+    try {
+      await invoke('ask_replace');
+    } catch (error) {
+      throw new AskError(replaceFailureMessage(error));
+    }
   },
 };

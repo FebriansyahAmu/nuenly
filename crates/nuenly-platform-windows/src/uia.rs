@@ -6,7 +6,7 @@
 //! `uiautomation` tidak keluar dari modul ini karena `Debug` dan `Display`-nya mencetak nama
 //! elemen.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -18,6 +18,8 @@ use uiautomation::patterns::{UILegacyIAccessiblePattern, UITextPattern, UIValueP
 use uiautomation::types::{ControlType, Handle, TextAttribute, TextPatternRangeEndpoint, TextUnit};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
 
+use crate::clipboard::Saved;
+use crate::input;
 use crate::process::process_name;
 use crate::window;
 
@@ -46,7 +48,45 @@ pub struct Uia {
     /// Address bar terakhir yang ditemukan, agar tekanan hotkey berikutnya di jendela browser
     /// yang sama tidak perlu mencari ulang.
     address_bar: RefCell<Option<(WindowHandle, UIElement)>>,
+    /// Teks terakhir yang dibaca dan bisa diganti (F-23). Bacaan berikutnya menggantinya.
+    target: RefCell<Option<Target>>,
+    /// Jumlah target sejauh ini, untuk ID-nya.
+    targets: Cell<u64>,
 }
+
+/// Teks terpilih, atau seluruh isi kolom, yang bisa ditimpa Ganti teks. Elemennya tetap di thread
+/// UIA; di luar modul ini hanya ID-nya yang dipegang.
+struct Target {
+    id: u64,
+    window: ForegroundWindow,
+    element: UIElement,
+    kind: CaptureKind,
+}
+
+/// Kenapa Ganti teks tidak menempel jawaban.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplaceReason {
+    /// Target sesi ini sudah tidak ada, misalnya karena ada bacaan baru.
+    Gone,
+    /// Teks di aplikasi asal sudah berubah sejak dibaca.
+    Changed,
+    /// Jendela asal tidak bisa dikembalikan ke depan, atau fokusnya sudah di elemen lain.
+    Moved,
+    /// UIA, clipboard, atau input gagal, atau terlalu lama.
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReplaceError {
+    pub reason: ReplaceReason,
+    /// Jendela asal sudah dikembalikan ke depan, jadi jendela Nuenly tidak lagi tampil.
+    pub switched: bool,
+}
+
+/// Lama menunggu jendela asal kembali di depan dengan fokus di elemen target, dan jarak antar
+/// pemeriksaan selama menunggu.
+const ACTIVATION_WAIT: Duration = Duration::from_secs(1);
+const ACTIVATION_STEP: Duration = Duration::from_millis(25);
 
 /// Jendela di latar depan beserta prosesnya.
 pub struct UiaWindow {
@@ -121,6 +161,8 @@ impl Uia {
             automation,
             walker,
             address_bar: RefCell::new(None),
+            target: RefCell::new(None),
+            targets: Cell::new(0),
         })
     }
 
@@ -322,6 +364,7 @@ impl Uia {
         &self,
         window: &ForegroundWindow,
     ) -> Result<Option<ContextSnapshot>, ContextError> {
+        self.forget_target();
         let element = self.focused_in(window)?;
         // Bila tidak bisa dipastikan, anggap field kata sandi agar teksnya tidak dibaca.
         let is_password = element.is_password().unwrap_or(true);
@@ -333,6 +376,10 @@ impl Uia {
                 None => return Ok(None),
             }
         };
+        // Seleksi di halaman web biasa atau kolom baca-saja tidak bisa ditimpa tempel.
+        if !text.is_empty() && typeable(&element) {
+            self.remember(window, &element, CaptureKind::SelectedText);
+        }
         Ok(Some(ContextSnapshot {
             app: window.app.clone(),
             // Judul jendela tidak dibutuhkan untuk teks terpilih, jadi tidak dibaca.
@@ -362,8 +409,108 @@ impl Uia {
         &self,
         window: &ForegroundWindow,
     ) -> Result<Option<ContextSnapshot>, ContextError> {
+        self.forget_target();
         let element = self.focused_in(window)?;
-        Ok(field_snapshot(window, &element, CaptureKind::FocusedField))
+        let Some((snapshot, whole)) = field_read(window, &element, CaptureKind::FocusedField)
+        else {
+            return Ok(None);
+        };
+        if whole && typeable(&element) {
+            self.remember(window, &element, CaptureKind::FocusedField);
+        }
+        Ok(Some(snapshot))
+    }
+
+    fn remember(&self, window: &ForegroundWindow, element: &UIElement, kind: CaptureKind) {
+        let id = self.targets.get() + 1;
+        self.targets.set(id);
+        self.target.replace(Some(Target {
+            id,
+            window: window.clone(),
+            element: element.clone(),
+            kind,
+        }));
+    }
+
+    /// ID target Ganti teks dari bacaan terakhir, bila teksnya bisa diganti.
+    pub(crate) fn target(&self) -> Option<u64> {
+        self.target.borrow().as_ref().map(|target| target.id)
+    }
+
+    pub(crate) fn forget_target(&self) {
+        self.target.replace(None);
+    }
+
+    /// Ganti teks (F-23): menempel `replacement` di tempat target `id` dibaca, atas klik
+    /// pengguna. Hasilnya isi clipboard sebelumnya, untuk dikembalikan pemanggil setelah aplikasi
+    /// asal sempat menempel.
+    ///
+    /// Urutannya:
+    /// 1. Selagi jendela Nuenly masih di depan, teks di aplikasi asal harus masih `expected`.
+    /// 2. Jendela asal dikembalikan ke depan, lalu ditunggu sampai fokusnya kembali ke elemen
+    ///    target (paling lama [`ACTIVATION_WAIT`]).
+    /// 3. Teksnya diperiksa sekali lagi, lalu untuk kolom, seluruh isinya dipilih.
+    /// 4. Bila belum lewat `paste_by`, jawaban ditulis ke clipboard dan Ctrl+V dikirim.
+    ///
+    /// # Errors
+    ///
+    /// [`ReplaceError`] dengan alasannya, dan apakah jendela asal sudah dikembalikan ke depan.
+    pub(crate) fn replace(
+        &self,
+        id: u64,
+        expected: &SensitiveText,
+        replacement: &str,
+        paste_by: Instant,
+    ) -> Result<Saved, ReplaceError> {
+        let refuse = |reason, switched| ReplaceError { reason, switched };
+        let target = self.target.borrow();
+        let target = target
+            .as_ref()
+            .filter(|target| target.id == id)
+            .ok_or(refuse(ReplaceReason::Gone, false))?;
+        if current_text(&target.element, target.kind).as_ref() != Some(expected) {
+            return Err(refuse(ReplaceReason::Changed, false));
+        }
+        if !window::activate(target.window.handle) {
+            return Err(refuse(ReplaceReason::Moved, false));
+        }
+        if !self.wait_for_focus(target) {
+            return Err(refuse(ReplaceReason::Moved, true));
+        }
+        if current_text(&target.element, target.kind).as_ref() != Some(expected) {
+            return Err(refuse(ReplaceReason::Changed, true));
+        }
+        if target.kind == CaptureKind::FocusedField && select_all(&target.element).is_none() {
+            return Err(refuse(ReplaceReason::Failed, true));
+        }
+        if Instant::now() >= paste_by {
+            return Err(refuse(ReplaceReason::Failed, true));
+        }
+        let saved =
+            Saved::replace_with(replacement).map_err(|_| refuse(ReplaceReason::Failed, true))?;
+        input::paste().map_err(|_| refuse(ReplaceReason::Failed, true))?;
+        Ok(saved)
+    }
+
+    /// Menunggu sampai jendela target di depan dan fokusnya di elemen target. Penantian singkat
+    /// sekali jalan setelah klik pengguna, bukan pemantauan terus-menerus.
+    fn wait_for_focus(&self, target: &Target) -> bool {
+        let until = Instant::now() + ACTIVATION_WAIT;
+        loop {
+            let ready = window::handle(window::foreground()) == target.window.handle
+                && self.automation.get_focused_element().is_ok_and(|focused| {
+                    self.automation
+                        .compare_elements(&focused, &target.element)
+                        .unwrap_or(false)
+                });
+            if ready {
+                return true;
+            }
+            if Instant::now() >= until {
+                return false;
+            }
+            std::thread::sleep(ACTIVATION_STEP);
+        }
     }
 
     /// Klien UIA, untuk memasang handler event di thread yang sama.
@@ -439,17 +586,29 @@ pub(crate) fn field_snapshot(
     element: &UIElement,
     kind: CaptureKind,
 ) -> Option<ContextSnapshot> {
+    field_read(window, element, kind).map(|(snapshot, _)| snapshot)
+}
+
+/// Seperti [`field_snapshot`], ditambah apakah teksnya seluruh isi kolom yang bisa ditimpa Ganti
+/// teks: bukan kata sandi, tidak kosong, terbaca utuh dari Value pattern, dan bisa dipilih lewat
+/// Text pattern.
+fn field_read(
+    window: &ForegroundWindow,
+    element: &UIElement,
+    kind: CaptureKind,
+) -> Option<(ContextSnapshot, bool)> {
     // Bila tidak bisa dipastikan, anggap field kata sandi agar isinya tidak dibaca.
     let is_password = element.is_password().unwrap_or(true);
     let control = control_kind(element);
-    let (text, label) = if is_password {
-        (SensitiveText::default(), None)
+    let (text, label, whole) = if is_password {
+        (SensitiveText::default(), None, false)
     } else {
-        let text = field_text(element, control)?;
+        let (text, whole) = field_text(element, control)?;
         let label = label(element, &text);
-        (text, label)
+        let whole = whole && !text.is_empty();
+        (text, label, whole)
     };
-    Some(ContextSnapshot {
+    let snapshot = ContextSnapshot {
         app: window.app.clone(),
         window_title: SensitiveText::default(),
         kind,
@@ -460,7 +619,29 @@ pub(crate) fn field_snapshot(
             bounds: None,
         }),
         text,
-    })
+    };
+    Some((snapshot, whole))
+}
+
+/// Teks yang kini ada di tempat target dibaca: seleksi, atau nilai kolom.
+fn current_text(element: &UIElement, kind: CaptureKind) -> Option<SensitiveText> {
+    match kind {
+        CaptureKind::SelectedText => selection(element),
+        CaptureKind::FocusedField => value(element),
+        _ => None,
+    }
+}
+
+/// Memilih seluruh isi kolom agar Ctrl+V menimpanya.
+#[allow(clippy::disallowed_methods)] // Ganti teks (F-23) atas klik pengguna: hanya seleksi kolom target.
+fn select_all(element: &UIElement) -> Option<()> {
+    element
+        .get_pattern::<UITextPattern>()
+        .ok()?
+        .get_document_range()
+        .ok()?
+        .select()
+        .ok()
 }
 
 /// Membaca `element`, field yang baru ditinggalkan pengguna, seperti [`Uia::read_field`]. Hanya
@@ -611,15 +792,18 @@ fn selection(element: &UIElement) -> Option<SensitiveText> {
 }
 
 /// Isi field: paragraf di sekitar caret untuk dokumen, nilai Value pattern untuk field biasa,
-/// atau awal Text pattern bila keduanya tidak ada.
-fn field_text(element: &UIElement, control: ControlKind) -> Option<SensitiveText> {
+/// atau awal Text pattern bila keduanya tidak ada. Nilai kedua `true` bila teksnya seluruh isi
+/// field dan field itu bisa dipilih untuk ditimpa.
+fn field_text(element: &UIElement, control: ControlKind) -> Option<(SensitiveText, bool)> {
     if control == ControlKind::Document
         && let Some(text) = around_caret(element)
     {
-        return Some(text);
+        return Some((text, false));
     }
     if let Some(text) = value(element) {
-        return Some(tail(&text, MAX_FIELD_CHARS));
+        let whole =
+            text.char_count() <= MAX_FIELD_CHARS && element.get_pattern::<UITextPattern>().is_ok();
+        return Some((tail(&text, MAX_FIELD_CHARS), whole));
     }
     let text = element
         .get_pattern::<UITextPattern>()
@@ -628,7 +812,7 @@ fn field_text(element: &UIElement, control: ControlKind) -> Option<SensitiveText
         .ok()?
         .get_text(MAX_SELECTION_LEN)
         .ok()?;
-    Some(SensitiveText::new(text))
+    Some((SensitiveText::new(text), false))
 }
 
 /// Paragraf caret ditambah beberapa paragraf sebelumnya dan sesudahnya, lewat Text pattern 2.

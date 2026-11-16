@@ -1,5 +1,6 @@
 //! Catatan audit: apa yang dikirim Nuenly ke model, dari aplikasi dan mode apa, dan bagaimana
-//! pengguna menanggapi saran, tanpa teks pengguna. Tool call menyusul bersama fiturnya.
+//! pengguna menanggapi saran, dan kapan Ganti teks menulis ke aplikasi lain, tanpa teks pengguna.
+//! Tool call menyusul bersama fiturnya.
 
 use std::time::{Duration, SystemTime};
 
@@ -51,6 +52,33 @@ pub enum AuditEvent {
         /// Milidetik sejak saran tampil sampai ditanggapi.
         after_ms: u32,
     },
+    /// Ganti teks: jawaban Tanya Nuenly ditempel ke aplikasi asal atas klik pengguna (F-23).
+    #[serde(rename_all = "camelCase")]
+    Replace {
+        source: ReplaceSource,
+        outcome: ReplaceOutcome,
+    },
+}
+
+/// Teks yang diganti.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReplaceSource {
+    /// Teks terpilih.
+    Selection,
+    /// Seluruh isi kolom.
+    Field,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReplaceOutcome {
+    /// Jawaban ditempel.
+    Replaced,
+    /// Teks di aplikasi asal sudah berubah sejak dibaca, jadi tidak diganti.
+    Changed,
+    /// Jendela atau kolom asal tidak bisa dikembalikan, atau tempel gagal.
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,7 +139,10 @@ pub(crate) fn from_millis(millis: i64) -> SystemTime {
 mod tests {
     use std::time::{Duration, SystemTime};
 
-    use super::{AskOutcome, AuditEvent, Reaction, SuggestOutcome, from_millis, millis};
+    use super::{
+        AskOutcome, AuditEvent, Reaction, ReplaceOutcome, ReplaceSource, SuggestOutcome,
+        from_millis, millis,
+    };
 
     #[test]
     fn events_are_stored_as_tagged_json() {
@@ -151,6 +182,17 @@ mod tests {
                     "kind": "reaction",
                     "reaction": "disliked",
                     "afterMs": 1800,
+                }),
+            ),
+            (
+                AuditEvent::Replace {
+                    source: ReplaceSource::Selection,
+                    outcome: ReplaceOutcome::Changed,
+                },
+                serde_json::json!({
+                    "kind": "replace",
+                    "source": "selection",
+                    "outcome": "changed",
                 }),
             ),
         ];

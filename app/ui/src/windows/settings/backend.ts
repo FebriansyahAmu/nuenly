@@ -40,6 +40,12 @@ export type SuggestOutcome = 'shown' | 'held' | 'nothing' | 'dropped' | 'failed'
 /** Sama dengan `Reaction` di `crates/nuenly-store/src/audit.rs`. */
 export type Reaction = 'copied' | 'viewed' | 'disliked' | 'dismissed' | 'closed' | 'expired';
 
+/** Sama dengan `ReplaceSource` di `crates/nuenly-store/src/audit.rs`. */
+export type ReplaceSource = 'selection' | 'field';
+
+/** Sama dengan `ReplaceOutcome` di `crates/nuenly-store/src/audit.rs`. */
+export type ReplaceOutcome = 'replaced' | 'changed' | 'failed';
+
 /** Isi kejadian; sama dengan `AuditEvent` di `crates/nuenly-store/src/audit.rs`. */
 export type AuditEvent =
   | {
@@ -62,6 +68,12 @@ export type AuditEvent =
       reaction: Reaction;
       /** Milidetik sejak saran tampil. */
       afterMs: number;
+    }
+  | {
+      /** Ganti teks: jawaban Tanya Nuenly ditempel ke aplikasi asal. */
+      kind: 'replace';
+      source: ReplaceSource;
+      outcome: ReplaceOutcome;
     };
 
 /** Satu catatan riwayat aktivitas; sama dengan `AuditItem` di `app/src/audit.rs`. */

@@ -3,6 +3,7 @@ import { type AskBackend, type AskContext, AskError, type AskNotice } from './ba
 export type AskPhase = 'idle' | 'streaming' | 'done' | 'error';
 
 const GENERIC_ERROR = 'Nuenly tidak bisa menjawab sekarang. Coba lagi sebentar lagi.';
+const REPLACE_ERROR = 'Teks tidak bisa diganti. Salin jawabannya, lalu tempel sendiri.';
 
 /** Status satu sesi Tanya Nuenly, dari jendela dibuka sampai ditutup. */
 export class AskSession {
@@ -15,9 +16,15 @@ export class AskSession {
   error = $state<string | null>(null);
   /** Hanya sebagian teks konteks yang dipakai karena terlalu panjang. */
   contextTruncated = $state(false);
+  /** Ganti teks sedang berjalan. */
+  replacing = $state(false);
+  /** Kenapa Ganti teks terakhir tidak menempel jawaban. */
+  replaceError = $state<string | null>(null);
 
   #backend: AskBackend;
   #lastPrompt = $state('');
+  /** Ganti teks sudah dicoba untuk jawaban ini; Rust hanya mengizinkannya sekali per jawaban. */
+  #replaceTried = $state(false);
   /** Naik setiap permintaan baru atau sesi dibuka ulang; token dari permintaan lama diabaikan. */
   #run = 0;
 
@@ -33,6 +40,28 @@ export class AskSession {
     return this.#lastPrompt !== '' && (this.phase === 'done' || this.phase === 'error');
   }
 
+  /** Jawaban selesai, konteksnya masih dipakai dan bisa diganti, dan belum pernah dicoba. */
+  get canReplace(): boolean {
+    return this.canCopy && this.context?.replaceable === true && !this.replacing && !this.#replaceTried;
+  }
+
+  /** Ganti teks. Bila berhasil, Rust menutup jendela; bila tidak, alasannya tampil di `replaceError`. */
+  async replace(): Promise<void> {
+    if (!this.canReplace) {
+      return;
+    }
+    this.replacing = true;
+    this.replaceError = null;
+    this.#replaceTried = true;
+    try {
+      await this.#backend.replace();
+    } catch (err) {
+      this.replaceError = err instanceof AskError ? err.message : REPLACE_ERROR;
+    } finally {
+      this.replacing = false;
+    }
+  }
+
   /** Memulai sesi baru, misalnya setiap kali hotkey ditekan. */
   open(context: AskContext | null, notice: AskNotice | null = null): void {
     this.#run += 1;
@@ -44,6 +73,13 @@ export class AskSession {
     this.error = null;
     this.contextTruncated = false;
     this.#lastPrompt = '';
+    this.#resetReplace();
+  }
+
+  #resetReplace(): void {
+    this.replacing = false;
+    this.replaceError = null;
+    this.#replaceTried = false;
   }
 
   clearContext(): void {
@@ -71,6 +107,7 @@ export class AskSession {
     this.answer = '';
     this.error = null;
     this.contextTruncated = false;
+    this.#resetReplace();
     this.phase = 'streaming';
 
     try {

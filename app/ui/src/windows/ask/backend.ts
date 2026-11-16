@@ -5,6 +5,8 @@ export interface AskContext {
   appName: string;
   /** Cuplikan satu baris (≤ 200 karakter) bila mode mengizinkan; `null` di mode lain. */
   preview: string | null;
+  /** Ganti teks bisa dipakai: teks terpilih, atau seluruh isi kolom (bukan bagian dokumen panjang). */
+  replaceable: boolean;
 }
 
 /** Alasan teks dari aplikasi tidak dipakai; sama dengan `Notice` di `app/src/ask.rs`. */
@@ -32,6 +34,11 @@ export interface AskReply {
 export interface AskBackend {
   /** Mengirim permintaan dan memanggil `onToken` untuk setiap potongan jawaban. */
   ask(request: AskRequest, onToken: (token: string) => void): Promise<AskReply>;
+  /**
+   * Ganti teks: Rust menempel jawaban terakhir di aplikasi asal lalu menutup jendela ini. Gagal
+   * dengan `AskError` berisi pesan untuk pengguna.
+   */
+  replace(): Promise<void>;
 }
 
 /** Error yang pesannya aman dan ramah untuk ditampilkan ke pengguna. */

@@ -1,26 +1,44 @@
 import { describe, expect, it } from 'vitest';
 
-import { type AskBackend, AskError, type AskRequest } from './backend';
+import { type AskBackend, type AskContext, AskError, type AskRequest } from './backend';
 import { AskSession } from './session.svelte';
 
-const CONTEXT = { source: 'selection', appName: 'Mail', preview: 'cuplikan sintetis' } as const;
+const CONTEXT = { source: 'selection', appName: 'Mail', preview: 'cuplikan sintetis', replaceable: true } as const;
 
-function streaming(tokens: string[], contextTruncated = false): AskBackend & { requests: AskRequest[] } {
+function streaming(
+  tokens: string[],
+  contextTruncated = false,
+  replace: () => Promise<void> = () => Promise.resolve(),
+): AskBackend & { requests: AskRequest[]; replaced: number } {
   const requests: AskRequest[] = [];
-  return {
+  const backend = {
     requests,
-    async ask(request, onToken) {
+    replaced: 0,
+    async ask(request: AskRequest, onToken: (token: string) => void) {
       requests.push(request);
       for (const token of tokens) {
         onToken(token);
       }
       return { contextTruncated };
     },
+    async replace() {
+      backend.replaced += 1;
+      await replace();
+    },
   };
+  return backend;
 }
 
 function failing(error: unknown): AskBackend {
-  return { ask: () => Promise.reject(error) };
+  return { ask: () => Promise.reject(error), replace: () => Promise.resolve() };
+}
+
+async function answered(backend: AskBackend, context: AskContext = CONTEXT): Promise<AskSession> {
+  const session = new AskSession(backend);
+  session.open(context);
+  session.prompt = 'Rapikan';
+  await session.submit();
+  return session;
 }
 
 describe('AskSession', () => {
@@ -118,6 +136,50 @@ describe('AskSession', () => {
     expect(backend.requests.map((r) => r.prompt)).toEqual(['Ringkas', 'Ringkas']);
   });
 
+  it('ganti teks hanya setelah jawaban selesai, dan sekali per jawaban', async () => {
+    const backend = streaming(['Halo ', 'semua']);
+    const session = new AskSession(backend);
+    session.open(CONTEXT);
+    expect(session.canReplace).toBe(false);
+
+    session.prompt = 'Rapikan';
+    await session.submit();
+    expect(session.canReplace).toBe(true);
+
+    await session.replace();
+    await session.replace();
+    expect(backend.replaced).toBe(1);
+    expect(session.canReplace).toBe(false);
+
+    // Jawaban baru boleh diganti lagi.
+    await session.retry();
+    expect(session.canReplace).toBe(true);
+  });
+
+  it('ganti teks tidak tersedia tanpa konteks yang bisa diganti', async () => {
+    const document = await answered(streaming(['ok']), { ...CONTEXT, source: 'field', replaceable: false });
+    expect(document.canReplace).toBe(false);
+
+    const cleared = await answered(streaming(['ok']));
+    cleared.clearContext();
+    expect(cleared.canReplace).toBe(false);
+  });
+
+  it('menampilkan alasan ganti teks ditolak tanpa detail teknis', async () => {
+    const changed = await answered(streaming(['ok'], false, () => Promise.reject(new AskError('Teks sudah berubah.'))));
+    await changed.replace();
+    expect(changed.replaceError).toBe('Teks sudah berubah.');
+    expect(changed.replacing).toBe(false);
+    expect(changed.canCopy).toBe(true);
+
+    const unknown = await answered(streaming(['ok'], false, () => Promise.reject(new Error('E_ACCESSDENIED'))));
+    await unknown.replace();
+    expect(unknown.replaceError).not.toContain('E_ACCESSDENIED');
+
+    unknown.open(CONTEXT);
+    expect(unknown.replaceError).toBeNull();
+  });
+
   it('membuka ulang mengabaikan token dari permintaan lama', async () => {
     let emit: (token: string) => void = () => {};
     let finish: () => void = () => {};
@@ -127,6 +189,7 @@ describe('AskSession', () => {
           emit = onToken;
           finish = () => resolve({ contextTruncated: false });
         }),
+      replace: () => Promise.resolve(),
     };
     const session = new AskSession(backend);
     session.prompt = 'Halo';

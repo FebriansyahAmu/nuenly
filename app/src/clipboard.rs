@@ -8,12 +8,13 @@ pub fn clipboard_write_text(text: String) -> Result<(), String> {
     write(&text).map_err(|_| "Teks tidak bisa disalin.".to_owned())
 }
 
+/// Menyalin teks ke clipboard tanpa riwayat Win+V dan clipboard cloud.
 #[cfg(windows)]
-fn write(text: &str) -> std::io::Result<()> {
+pub fn write(text: &str) -> std::io::Result<()> {
     nuenly_platform_windows::clipboard::write_text(text)
 }
 
 #[cfg(not(windows))]
-fn write(_text: &str) -> std::io::Result<()> {
+pub fn write(_text: &str) -> std::io::Result<()> {
     Err(std::io::Error::other("clipboard belum didukung di OS ini"))
 }

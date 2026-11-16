@@ -5,12 +5,16 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-use nuenly_core::{CaptureKind, CaptureOutcome, ContextError, ContextSnapshot, SensitivePage};
+use nuenly_core::{
+    CaptureKind, CaptureOutcome, ContextError, ContextSnapshot, SensitivePage, SensitiveText,
+};
+use nuenly_store::ReplaceSource;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
 
 use crate::context::ContextReader;
+use crate::replace::{ReplaceFailure, Replacement};
 use crate::status::AppStatus;
 use crate::{foreground, logging, onboarding};
 
@@ -24,8 +28,15 @@ pub struct AskState(Mutex<Session>);
 #[derive(Default)]
 struct Session {
     context: Option<ContextSnapshot>,
+    /// Target Ganti teks untuk konteks ini; `None` bila teksnya tidak bisa diganti.
+    target: Option<u64>,
     /// Jawaban yang sedang berjalan berhenti saat pengirim ini di-drop.
     answering: Option<oneshot::Sender<()>>,
+    /// Nomor jawaban terakhir yang dimulai. Terus naik antar-sesi, jadi jawaban dari sesi lama
+    /// tidak pernah tersimpan di sesi baru.
+    answers: u64,
+    /// Jawaban terakhir yang selesai, dipakai paling banyak sekali oleh Ganti teks.
+    answer: Option<SensitiveText>,
 }
 
 impl AskState {
@@ -33,30 +44,79 @@ impl AskState {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Sesi baru: konteks diganti dan jawaban dari sesi lama dihentikan.
-    fn replace(&self, context: Option<ContextSnapshot>) {
-        *self.session() = Session {
+    /// Sesi baru: konteks diganti dan jawaban dari sesi lama dihentikan dan dibuang.
+    fn start(&self, context: Option<ContextSnapshot>, target: Option<u64>) {
+        let mut session = self.session();
+        let answers = session.answers + 1;
+        *session = Session {
             context,
-            answering: None,
+            target,
+            answers,
+            ..Session::default()
         };
     }
 
     /// Teks konteks untuk dijawab. Bila pengguna menghapus chip (`use_context` `false`),
-    /// teksnya langsung dibuang.
+    /// teksnya langsung dibuang, begitu juga target Ganti teks-nya.
     pub fn context(&self, use_context: bool) -> Option<ContextSnapshot> {
         let mut session = self.session();
         if !use_context {
             session.context = None;
+            session.target = None;
         }
         session.context.clone()
     }
 
     /// Memulai jawaban baru dan menghentikan jawaban sebelumnya. Hasilnya selesai saat jawaban
-    /// ini harus berhenti: jendela ditutup, sesi baru dibuka, atau jawaban lain dimulai.
-    pub fn begin_answer(&self) -> oneshot::Receiver<()> {
+    /// ini harus berhenti (jendela ditutup, sesi baru dibuka, atau jawaban lain dimulai), beserta
+    /// nomor jawaban untuk [`finish_answer`](Self::finish_answer).
+    pub fn begin_answer(&self) -> (oneshot::Receiver<()>, u64) {
         let (stop, stopped) = oneshot::channel();
-        self.session().answering = Some(stop);
-        stopped
+        let mut session = self.session();
+        session.answers += 1;
+        session.answer = None;
+        session.answering = Some(stop);
+        (stopped, session.answers)
+    }
+
+    /// Jawaban ke-`id` selesai utuh. Disimpan hanya bila belum ada jawaban atau sesi yang lebih
+    /// baru.
+    pub fn finish_answer(&self, id: u64, answer: SensitiveText) {
+        let mut session = self.session();
+        if session.answers == id {
+            session.answer = Some(answer);
+        }
+    }
+
+    /// Bahan Ganti teks: target, teks yang dibaca saat hotkey, dan jawaban terakhir tanpa spasi
+    /// di tepi. Jawabannya diambil, jadi satu jawaban hanya bisa dipakai sekali.
+    ///
+    /// # Errors
+    ///
+    /// [`ReplaceFailure::Unavailable`] bila tidak ada konteks yang bisa diganti atau belum ada
+    /// jawaban yang selesai.
+    pub fn replacement(&self) -> Result<Replacement, ReplaceFailure> {
+        let mut session = self.session();
+        let (Some(context), Some(target)) = (&session.context, session.target) else {
+            return Err(ReplaceFailure::Unavailable);
+        };
+        let source = match context.kind {
+            CaptureKind::SelectedText => ReplaceSource::Selection,
+            CaptureKind::FocusedField => ReplaceSource::Field,
+            _ => return Err(ReplaceFailure::Unavailable),
+        };
+        let expected = context.text.clone();
+        let answer = session.answer.take().ok_or(ReplaceFailure::Unavailable)?;
+        let text = SensitiveText::new(answer.expose().trim());
+        if text.is_empty() {
+            return Err(ReplaceFailure::Unavailable);
+        }
+        Ok(Replacement {
+            target,
+            source,
+            expected,
+            text,
+        })
     }
 }
 
@@ -80,6 +140,8 @@ pub struct ContextView {
     /// Cuplikan satu baris, paling banyak [`PREVIEW_CHARS`] karakter, bila kebijakan mode
     /// mengizinkan (`ActivePolicy::context_preview`). Teks utuhnya tetap di Rust.
     pub preview: Option<String>,
+    /// Ganti teks bisa dipakai untuk teks ini: teks terpilih, atau seluruh isi kolom.
+    pub replaceable: bool,
 }
 
 /// Panjang cuplikan teks konteks yang dikirim ke jendela, dalam karakter.
@@ -119,13 +181,13 @@ pub fn on_hotkey(app: &AppHandle) {
         return;
     }
     // Dibaca sebelum jendela tampil, karena setelah itu fokus sudah pindah ke Nuenly.
-    let (context, open) = read_context(app);
+    let (context, target, open) = read_context(app);
     let read = pressed.elapsed();
     let source = open
         .context
         .as_ref()
         .map_or("none", |context| context.source);
-    let _ = show(app, context, &open);
+    let _ = show(app, context, target, &open);
     // Target PRD: tampil ≤ 150 ms setelah hotkey. Diukur sampai Windows menampilkan jendela.
     tracing::info!(
         read_ms = logging::millis(read),
@@ -140,23 +202,26 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     if !onboarding::ensure_accepted(app) {
         return Ok(());
     }
-    show(app, None, &AskOpen::default())
+    show(app, None, None, &AskOpen::default())
 }
 
-/// Dipanggil saat jendela disembunyikan: sesi selesai, teks konteksnya dibuang, dan jawaban
-/// yang masih berjalan dihentikan.
+/// Dipanggil saat jendela disembunyikan: sesi selesai, teks konteks dan jawabannya dibuang,
+/// target Ganti teks dilupakan, dan jawaban yang masih berjalan dihentikan.
 pub fn closed(app: &AppHandle) {
-    app.state::<AskState>().replace(None);
+    app.state::<AskState>().start(None, None);
+    if let Some(reader) = app.try_state::<ContextReader>() {
+        reader.forget_target();
+    }
 }
 
-fn read_context(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
+fn read_context(app: &AppHandle) -> (Option<ContextSnapshot>, Option<u64>, AskOpen) {
     // Jendela Nuenly sendiri tidak pernah dibaca; dari sana Tanya Nuenly dibuka tanpa konteks.
     let own_window_focused = app
         .webview_windows()
         .values()
         .any(|window| window.is_focused().unwrap_or(false));
     if own_window_focused {
-        return (None, AskOpen::default());
+        return (None, None, AskOpen::default());
     }
     // Mode dipastikan milik aplikasi ini sebelum kebijakannya dipakai, tanpa menunggu event
     // latar depan yang mungkin belum tiba.
@@ -166,16 +231,22 @@ fn read_context(app: &AppHandle) -> (Option<ContextSnapshot>, AskOpen) {
             context: None,
             notice: Some(Notice::Paused),
         };
-        return (None, open);
+        return (None, None, open);
     };
-    prepare(
-        app.state::<ContextReader>().for_ask(&policy),
-        policy.context_preview,
-    )
+    let reader = app.state::<ContextReader>();
+    let result = reader.for_ask(&policy);
+    let target = matches!(result, Ok(CaptureOutcome::Captured(_)))
+        .then(|| reader.replace_target())
+        .flatten();
+    let (context, mut open) = prepare(result, policy.context_preview);
+    if let Some(view) = &mut open.context {
+        view.replaceable = target.is_some();
+    }
+    (context, target, open)
 }
 
 /// Memisahkan hasil baca menjadi teks konteks (tetap di Rust) dan isi event untuk jendela,
-/// dengan cuplikan teks hanya bila `show_preview`.
+/// dengan cuplikan teks hanya bila `show_preview`. `replaceable` diisi pemanggil.
 fn prepare(
     result: Result<CaptureOutcome, ContextError>,
     show_preview: bool,
@@ -189,6 +260,7 @@ fn prepare(
                 },
                 app_name: snapshot.app.display_name.clone(),
                 preview: show_preview.then(|| preview(snapshot.text.expose())),
+                replaceable: false,
             };
             let open = AskOpen {
                 context: Some(context),
@@ -244,7 +316,12 @@ fn preview(text: &str) -> String {
 ///
 /// Jendelanya sudah dibuat (tersembunyi) saat start, jadi membuka hanya memindahkan,
 /// memberi tahu frontend, lalu menampilkan; target PRD ≤ 150 ms setelah hotkey.
-fn show(app: &AppHandle, context: Option<ContextSnapshot>, open: &AskOpen) -> tauri::Result<()> {
+fn show(
+    app: &AppHandle,
+    context: Option<ContextSnapshot>,
+    target: Option<u64>,
+    open: &AskOpen,
+) -> tauri::Result<()> {
     let Some(window) = app.get_webview_window(LABEL) else {
         return Ok(());
     };
@@ -260,7 +337,7 @@ fn show(app: &AppHandle, context: Option<ContextSnapshot>, open: &AskOpen) -> ta
         window.set_size(area.size)?;
     }
 
-    app.state::<AskState>().replace(context);
+    app.state::<AskState>().start(context, target);
     app.emit_to(LABEL, "ask:open", open)?;
     window.show()?;
     window.set_focus()
@@ -269,12 +346,15 @@ fn show(app: &AppHandle, context: Option<ContextSnapshot>, open: &AskOpen) -> ta
 #[cfg(test)]
 mod tests {
     use nuenly_core::{
-        ActivePolicy, AppFilter, AppIdentity, CaptureKind, ContextError, ControlKind,
-        FakeContextSource, FieldInfo, ModeId, ProcessName, capture, capture_first,
+        ActivePolicy, AppFilter, AppIdentity, CaptureKind, CaptureOutcome, ContextError,
+        ContextSnapshot, ControlKind, FakeContextSource, FieldInfo, ModeId, ProcessName,
+        SensitiveText, capture, capture_first,
     };
+    use nuenly_store::ReplaceSource;
 
-    use super::{ContextView, Notice, PREVIEW_CHARS, prepare, preview};
+    use super::{AskState, ContextView, Notice, PREVIEW_CHARS, prepare, preview};
     use crate::context::ASK_KINDS;
+    use crate::replace::ReplaceFailure;
 
     fn app(process: &str, display_name: &str) -> AppIdentity {
         AppIdentity {
@@ -320,6 +400,7 @@ mod tests {
                 source: "selection",
                 app_name: "Notepad".to_owned(),
                 preview: None,
+                replaceable: false,
             })
         );
         let json = serde_json::to_string(&open).unwrap();
@@ -375,6 +456,7 @@ mod tests {
                 source: "field",
                 app_name: "Notepad".to_owned(),
                 preview: Some("isi field sintetis".to_owned()),
+                replaceable: false,
             })
         );
     }
@@ -426,6 +508,71 @@ mod tests {
             .with_browser_page(&["Masuk"], Some("ib.bri.co.id"))
             .with_selection("teks sintetis");
         assert_eq!(read(&bank, &policy()).notice, Some(Notice::Banking));
+    }
+
+    fn captured(source: &FakeContextSource) -> ContextSnapshot {
+        match capture_first(source, &policy(), ASK_KINDS).unwrap() {
+            CaptureOutcome::Captured(snapshot) => snapshot,
+            other => panic!("seharusnya Captured, dapat {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_finished_answer_can_replace_the_text_once() {
+        let state = AskState::default();
+        state.start(Some(captured(&notepad())), Some(7));
+        assert_eq!(state.replacement().err(), Some(ReplaceFailure::Unavailable));
+
+        let (_stopped, id) = state.begin_answer();
+        state.finish_answer(id, SensitiveText::new("\n  Rapat digeser ke Kamis.  \n"));
+        let replacement = state.replacement().unwrap();
+        assert_eq!(replacement.target, 7);
+        assert_eq!(replacement.source, ReplaceSource::Selection);
+        assert_eq!(
+            replacement.expected.expose(),
+            "rapat sintetis\n\ndigeser ke   kamis"
+        );
+        assert_eq!(replacement.text.expose(), "Rapat digeser ke Kamis.");
+        // Satu jawaban, satu Ganti teks.
+        assert_eq!(state.replacement().err(), Some(ReplaceFailure::Unavailable));
+    }
+
+    #[test]
+    fn only_the_latest_answer_of_the_open_session_is_kept() {
+        let state = AskState::default();
+        state.start(Some(captured(&notepad())), Some(7));
+        let (_first, old) = state.begin_answer();
+        let (_second, latest) = state.begin_answer();
+        state.finish_answer(old, SensitiveText::new("jawaban lama"));
+        assert!(state.replacement().is_err());
+
+        // Jawaban dari sesi sebelumnya tidak masuk ke sesi baru.
+        state.start(Some(captured(&notepad())), Some(8));
+        state.finish_answer(latest, SensitiveText::new("jawaban sesi lama"));
+        assert!(state.replacement().is_err());
+    }
+
+    #[test]
+    fn nothing_is_replaceable_without_a_target_or_after_removing_the_context() {
+        let answered = |state: &AskState| {
+            let (_stopped, id) = state.begin_answer();
+            state.finish_answer(id, SensitiveText::new("Jawaban sintetis."));
+        };
+
+        let state = AskState::default();
+        state.start(Some(captured(&notepad())), None);
+        answered(&state);
+        assert!(state.replacement().is_err());
+
+        state.start(Some(captured(&notepad())), Some(3));
+        assert!(state.context(false).is_none());
+        answered(&state);
+        assert!(state.replacement().is_err());
+
+        state.start(Some(captured(&notepad())), Some(4));
+        let (_stopped, id) = state.begin_answer();
+        state.finish_answer(id, SensitiveText::new("   \n"));
+        assert!(state.replacement().is_err());
     }
 
     #[test]

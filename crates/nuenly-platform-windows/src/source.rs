@@ -7,11 +7,18 @@ use std::time::{Duration, Instant};
 
 use nuenly_core::{
     Browser, BrowserPage, CaptureKind, ContextError, ContextSnapshot, ContextSource,
-    ForegroundWindow, ReadPermit,
+    ForegroundWindow, ReadPermit, SensitiveText,
 };
 
-use crate::uia::Uia;
+use crate::clipboard::Saved;
+use crate::uia::{ReplaceError, ReplaceReason, Uia};
 use crate::window;
+
+/// Batas waktu Ganti teks, dari memeriksa teks sampai menempel.
+const REPLACE_TIMEOUT: Duration = Duration::from_secs(3);
+/// Ctrl+V tidak dikirim lagi bila sisa waktunya kurang dari ini, agar tempel tidak terjadi setelah
+/// pemanggil berhenti menunggu.
+const PASTE_MARGIN: Duration = Duration::from_millis(250);
 
 /// Pekerjaan untuk thread UIA yang memegang `C`.
 pub(crate) type Job<C> = Box<dyn FnOnce(&mut C) + Send>;
@@ -87,6 +94,49 @@ impl UiaContextSource {
         Ok(Self { jobs, timeout })
     }
 
+    /// ID target Ganti teks dari bacaan terakhir yang berhasil, bila teksnya bisa diganti: teks
+    /// terpilih, atau seluruh isi kolom yang terbaca utuh. Bacaan berikutnya menggantinya.
+    #[must_use]
+    pub fn replace_target(&self) -> Option<u64> {
+        self.run(|uia| Ok(uia.target())).ok().flatten()
+    }
+
+    /// Melupakan target Ganti teks tanpa menunggu, misalnya saat Tanya Nuenly ditutup.
+    pub fn forget_target(&self) {
+        let _ = self
+            .jobs
+            .send(Box::new(|uia: &mut Uia| uia.forget_target()));
+    }
+
+    /// Ganti teks (F-23): menempel `replacement` di tempat target `id` dibaca, hanya bila teks di
+    /// sana masih `expected`. Dipanggil atas klik pengguna selagi jendela Nuenly di depan.
+    ///
+    /// Hasilnya isi clipboard sebelumnya; kembalikan dengan [`Saved::restore`] setelah aplikasi
+    /// asal sempat menempel. Tempel tidak pernah dikirim setelah pemanggil berhenti menunggu.
+    ///
+    /// # Errors
+    ///
+    /// [`ReplaceError`]. Bila batas tunggu habis, jendela asal dianggap sudah di depan.
+    pub fn replace(
+        &self,
+        id: u64,
+        expected: SensitiveText,
+        replacement: SensitiveText,
+    ) -> Result<Saved, ReplaceError> {
+        let paste_by = Instant::now() + REPLACE_TIMEOUT.saturating_sub(PASTE_MARGIN);
+        run_until(
+            |work| self.jobs.send(work).is_ok(),
+            REPLACE_TIMEOUT,
+            move |uia: &mut Uia| Ok(uia.replace(id, &expected, replacement.expose(), paste_by)),
+        )
+        .unwrap_or_else(|_| {
+            Err(ReplaceError {
+                reason: ReplaceReason::Failed,
+                switched: true,
+            })
+        })
+    }
+
     /// Menjalankan `job` di thread UIA dan menunggu hasilnya paling lama `timeout`.
     fn run<T: Send + 'static>(
         &self,
@@ -134,9 +184,10 @@ pub(crate) mod tests {
     use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
     use std::time::Duration;
 
-    use nuenly_core::ContextError;
+    use nuenly_core::{ContextError, SensitiveText};
 
     use super::UiaContextSource;
+    use crate::uia::{ReplaceError, ReplaceReason};
 
     /// Dua klien UIA yang dibuat bersamaan di satu proses bisa gagal dengan `E_FAIL`. Aplikasi
     /// membuatnya satu per satu saat start, jadi test yang membuat klien UIA dibuat bergiliran.
@@ -150,6 +201,24 @@ pub(crate) mod tests {
     fn spawn(timeout: Duration) -> (MutexGuard<'static, ()>, UiaContextSource) {
         let guard = uia_turn();
         (guard, UiaContextSource::spawn(timeout).unwrap())
+    }
+
+    #[test]
+    fn an_unknown_target_is_refused_before_any_window_is_touched() {
+        let (_guard, source) = spawn(Duration::from_secs(5));
+        assert_eq!(source.replace_target(), None);
+        let result = source.replace(
+            42,
+            SensitiveText::new("teks sintetis"),
+            SensitiveText::new("jawaban sintetis"),
+        );
+        assert_eq!(
+            result.err(),
+            Some(ReplaceError {
+                reason: ReplaceReason::Gone,
+                switched: false,
+            })
+        );
     }
 
     #[test]

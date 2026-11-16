@@ -15,6 +15,7 @@ mod hotkey;
 mod logging;
 mod ollama;
 mod onboarding;
+mod replace;
 mod settings;
 mod status;
 mod store;
@@ -48,6 +49,7 @@ fn main() -> anyhow::Result<()> {
             ollama::ollama_status,
             onboarding::onboarding_accept,
             onboarding::onboarding_finish,
+            replace::ask_replace,
             settings::settings_get,
             settings::settings_set_hotkey,
             settings::settings_set_model,

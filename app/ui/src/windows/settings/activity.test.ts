@@ -80,6 +80,28 @@ describe('describeActivity', () => {
       outcome: 'Hilang sendiri',
     });
   });
+
+  it('menyebut Ganti teks, apa yang diganti, dan hasilnya', () => {
+    const replace = (outcome: 'replaced' | 'changed' | 'failed'): AuditItem => ({
+      kind: 'replace',
+      atMs: 0,
+      app: 'notepad.exe',
+      mode: 'medical',
+      source: 'field',
+      outcome,
+    });
+    expect(describeActivity(replace('replaced'), MODES)).toEqual({
+      title: 'Ganti teks',
+      detail: 'notepad.exe · Medical · isi kolom',
+      outcome: 'Diganti',
+      failed: false,
+    });
+    expect(describeActivity(replace('changed'), MODES)).toMatchObject({
+      outcome: 'Teks sudah berubah',
+      failed: false,
+    });
+    expect(describeActivity(replace('failed'), MODES).failed).toBe(true);
+  });
 });
 
 describe('formatWhen', () => {

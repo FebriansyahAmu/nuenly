@@ -3,6 +3,7 @@ fn main() {
     // `allow-<command>` di `capabilities/`.
     let manifest = tauri_build::AppManifest::new().commands(&[
         "app_quit",
+        "ask_replace",
         "ask_send",
         "audit_clear",
         "audit_list",

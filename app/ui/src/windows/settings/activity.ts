@@ -3,7 +3,15 @@
 
 import type { ModeInfo } from '$lib/status';
 
-import type { AskOutcome, AuditEvent, AuditItem, Reaction, SuggestOutcome } from './backend';
+import type {
+  AskOutcome,
+  AuditEvent,
+  AuditItem,
+  Reaction,
+  ReplaceOutcome,
+  ReplaceSource,
+  SuggestOutcome,
+} from './backend';
 
 /** Jumlah catatan terbaru yang dikirim Rust; sama dengan `LIMIT` di `app/src/audit.rs`. */
 export const ACTIVITY_LIMIT = 50;
@@ -14,6 +22,18 @@ const TITLE: Record<AuditEvent['kind'], string> = {
   ask: 'Tanya Nuenly',
   suggest: 'Saran',
   reaction: 'Tanggapan saran',
+  replace: 'Ganti teks',
+};
+
+const REPLACE_SOURCE: Record<ReplaceSource, string> = {
+  selection: 'teks terpilih',
+  field: 'isi kolom',
+};
+
+const REPLACE_OUTCOME: Record<ReplaceOutcome, string> = {
+  replaced: 'Diganti',
+  changed: 'Teks sudah berubah',
+  failed: 'Gagal',
 };
 
 const ASK_OUTCOME: Record<AskOutcome, string> = {
@@ -69,6 +89,8 @@ export function describeActivity(item: AuditItem, modes: readonly ModeInfo[]): A
       return row([item.model, context(item.contextChars)], SUGGEST_OUTCOME[item.outcome], item.outcome === 'failed');
     case 'reaction':
       return row([after(item.afterMs)], REACTION[item.reaction]);
+    case 'replace':
+      return row([REPLACE_SOURCE[item.source]], REPLACE_OUTCOME[item.outcome], item.outcome === 'failed');
   }
 }
 

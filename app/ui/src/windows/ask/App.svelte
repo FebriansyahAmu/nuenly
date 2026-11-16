@@ -186,9 +186,17 @@
         {/if}
       {/if}
 
+      {#if session.replaceError}
+        <p class="text-[13px] text-destructive" role="alert">{session.replaceError}</p>
+      {:else if session.phase === 'done' && session.context && !session.context.replaceable}
+        <p class="text-[13px] text-muted-foreground">
+          Ganti teks hanya untuk teks terpilih atau isi kolom yang bisa diketik. Di dokumen panjang, pilih teksnya dulu.
+        </p>
+      {/if}
+
       <div class="flex items-center gap-2 pt-1">
-        <!-- Aktif setelah Ganti teks (F-23) tersedia di Fase 2. -->
-        <Button disabled>Ganti teks</Button>
+        <!-- Menempel jawaban di tempat teks konteks dibaca (F-23); Rust menutup jendela bila berhasil. -->
+        <Button disabled={!session.canReplace} onclick={() => session.replace()}>Ganti teks</Button>
         <Button variant="outline" disabled={!session.canCopy} onclick={copy}>
           {#if copied}
             <Check /> Tersalin

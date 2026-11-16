@@ -11,7 +11,10 @@ mod error;
 mod key;
 mod store;
 
-pub use audit::{AskOutcome, AuditEntry, AuditEvent, RETENTION, Reaction, SuggestOutcome};
+pub use audit::{
+    AskOutcome, AuditEntry, AuditEvent, RETENTION, Reaction, ReplaceOutcome, ReplaceSource,
+    SuggestOutcome,
+};
 pub use error::StoreError;
 pub use key::{KEY_LEN, StoreKey};
 pub use store::Store;
