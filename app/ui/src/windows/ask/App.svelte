@@ -1,0 +1,214 @@
+<script lang="ts">
+  import Check from '@lucide/svelte/icons/check';
+  import EyeOff from '@lucide/svelte/icons/eye-off';
+  import X from '@lucide/svelte/icons/x';
+  import { invoke, isTauri } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { onMount, tick } from 'svelte';
+
+  import NuenlyMark from '$lib/components/nuenly-mark.svelte';
+  import { Badge } from '$lib/components/ui/badge';
+  import { Button } from '$lib/components/ui/button';
+
+  import type { AskContext, AskNotice, AskOpen } from './backend';
+  import type { AskSession } from './session.svelte';
+
+  let { session }: { session: AskSession } = $props();
+
+  const SOURCE_LABEL: Record<AskContext['source'], string> = {
+    selection: 'Teks terpilih',
+    field: 'Isi field',
+  };
+
+  /** Sama dengan `MAX_PROMPT_CHARS` di `app/src/answer.rs`. */
+  const MAX_PROMPT = 2000;
+
+  const NOTICE: Record<AskNotice, string> = {
+    paused: 'Nuenly sedang dijeda, jadi teks dari aplikasi tidak dibaca.',
+    notAllowed: 'Nuenly tidak membaca aplikasi ini.',
+    privateWindow: 'Nuenly tidak membaca jendela privat.',
+    banking: 'Nuenly tidak membaca situs perbankan.',
+    protectedField: 'Isi field kata sandi tidak dibaca.',
+    unreadable: 'Teks tidak bisa dibaca dari aplikasi ini.',
+  };
+
+  // Dari teks terpilih yang dipakai bagian awalnya; dari isi field, bagian akhirnya (yang sedang
+  // diketik), sama dengan `ContextAssembler` di Rust.
+  const TRUNCATED: Record<AskContext['source'], string> = {
+    selection: 'Teks terpilih terlalu panjang, jadi hanya bagian awalnya yang dipakai.',
+    field: 'Isi field terlalu panjang, jadi hanya bagian akhirnya yang dipakai.',
+  };
+
+  let input = $state<HTMLInputElement>();
+  let copied = $state(false);
+  // Teks jawaban tetap teks biasa (tanpa HTML); baris kosong memisahkan paragraf.
+  const paragraphs = $derived(session.answer.split(/\n\s*\n/));
+
+  async function close() {
+    if (isTauri()) {
+      await getCurrentWindow().hide();
+    }
+  }
+
+  async function copy() {
+    // Lewat Rust agar jawaban tidak ikut ke riwayat clipboard dan clipboard cloud.
+    if (isTauri()) {
+      await invoke('clipboard_write_text', { text: session.answer });
+    } else {
+      await navigator.clipboard.writeText(session.answer);
+    }
+    copied = true;
+    setTimeout(() => (copied = false), 1500);
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      void close();
+    }
+  }
+
+  function onSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    void session.submit();
+  }
+
+  onMount(() => {
+    input?.focus();
+    if (!isTauri()) {
+      return;
+    }
+    // Rust mengirim `ask:open` setiap kali jendela dibuka; sesi lama dibuang.
+    const stop = listen<AskOpen>('ask:open', async ({ payload }) => {
+      session.open(payload.context, payload.notice);
+      copied = false;
+      await tick();
+      input?.focus();
+    });
+    return () => void stop.then((unlisten) => unlisten());
+  });
+</script>
+
+<svelte:window onkeydown={onKeydown} />
+
+<!-- Kartu di sepertiga atas layar (desain 03) agar input tidak bergeser saat jawaban memanjang. -->
+<div class="fixed inset-0 flex items-start justify-center p-4 pt-[15vh]">
+  <!-- Latar redup menutupi layar kerja; klik di luar kartu sama dengan Esc. -->
+  <button
+    type="button"
+    class="absolute inset-0 cursor-default bg-black/40"
+    tabindex="-1"
+    aria-label="Tutup"
+    onclick={close}
+  ></button>
+
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="ask-title"
+    class="relative w-full max-w-[620px] overflow-hidden rounded-xl border bg-background shadow-2xl"
+  >
+    <h1 id="ask-title" class="sr-only">Tanya Nuenly</h1>
+
+    <form class="flex items-center gap-3 border-b px-4 py-3.5" onsubmit={onSubmit}>
+      <NuenlyMark class="shrink-0" />
+      <input
+        bind:this={input}
+        bind:value={session.prompt}
+        class="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+        placeholder="Minta Nuenly merapikan, meringkas, atau menjelaskan…"
+        aria-label="Perintah untuk Nuenly"
+        maxlength={MAX_PROMPT}
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </form>
+
+    <div class="flex flex-col gap-3 p-4">
+      {#if session.context}
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-muted-foreground">Dari:</span>
+            <Badge variant="secondary" class="h-6 gap-1.5 rounded-md px-2 text-sm font-normal">
+              {SOURCE_LABEL[session.context.source]} di {session.context.appName}
+              <button
+                type="button"
+                class="rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label="Jangan pakai {SOURCE_LABEL[session.context.source].toLowerCase()} sebagai konteks"
+                onclick={() => session.clearContext()}
+              >
+                <X class="size-3.5" />
+              </button>
+            </Badge>
+          </div>
+          <!-- Cuplikan hanya dikirim Rust bila kebijakan mode mengizinkan (mode Umum). -->
+          {#if session.context.preview}
+            <p
+              class="line-clamp-2 rounded-md bg-muted px-3 py-2 text-[13px] leading-snug text-muted-foreground"
+              aria-label="Cuplikan {SOURCE_LABEL[session.context.source].toLowerCase()}"
+            >
+              {session.context.preview}
+            </p>
+          {/if}
+        </div>
+      {:else if session.notice}
+        <p class="flex items-center gap-2 text-sm text-muted-foreground">
+          <EyeOff class="size-4 shrink-0" aria-hidden="true" />
+          {NOTICE[session.notice]}
+        </p>
+      {/if}
+
+      {#if session.phase === 'idle'}
+        <p class="text-sm text-muted-foreground">Tulis perintah, lalu tekan Enter.</p>
+      {:else}
+        <div
+          class="flex max-h-[50vh] flex-col gap-2 overflow-y-auto rounded-lg border bg-muted/40 p-4 text-[15px] leading-normal"
+          aria-live="polite"
+          aria-busy={session.phase === 'streaming'}
+        >
+          {#if session.phase === 'error'}
+            <p class="text-destructive">{session.error}</p>
+          {:else}
+            {#each paragraphs as paragraph, index (index)}
+              <p class="whitespace-pre-wrap">
+                {paragraph}{#if session.phase === 'streaming' && index === paragraphs.length - 1}<span
+                    class="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground/50 align-text-bottom"
+                  ></span>{/if}
+              </p>
+            {/each}
+          {/if}
+        </div>
+        {#if session.phase === 'done' && session.contextTruncated}
+          <p class="text-[13px] text-muted-foreground">
+            {TRUNCATED[session.context?.source ?? 'selection']}
+          </p>
+        {/if}
+      {/if}
+
+      {#if session.replaceError}
+        <p class="text-[13px] text-destructive" role="alert">{session.replaceError}</p>
+      {:else if session.phase === 'done' && session.context && !session.context.replaceable}
+        <p class="text-[13px] text-muted-foreground">
+          Ganti teks hanya untuk teks terpilih atau isi kolom yang bisa diketik. Di dokumen panjang, pilih teksnya dulu.
+        </p>
+      {/if}
+
+      <div class="flex items-center gap-2 pt-1">
+        <!-- Menempel jawaban di tempat teks konteks dibaca (F-23); Rust menutup jendela bila berhasil. -->
+        <Button disabled={!session.canReplace} onclick={() => session.replace()}>Ganti teks</Button>
+        <Button variant="outline" disabled={!session.canCopy} onclick={copy}>
+          {#if copied}
+            <Check /> Tersalin
+          {:else}
+            Salin
+          {/if}
+        </Button>
+        <Button variant="ghost" disabled={!session.canRetry} onclick={() => session.retry()}>
+          Coba lagi
+        </Button>
+        <span class="ml-auto text-xs text-muted-foreground">Esc untuk tutup</span>
+      </div>
+    </div>
+  </div>
+</div>

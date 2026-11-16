@@ -69,6 +69,22 @@ Lupa sign-off? Perbaiki commit terakhir dengan `git commit --amend -s --no-edit`
 
 Kecuali Anda menyatakan lain secara tegas, setiap kontribusi yang sengaja Anda ajukan untuk dimasukkan ke proyek ini, sebagaimana didefinisikan dalam lisensi Apache-2.0, dilisensikan ganda sebagai MIT OR Apache-2.0 tanpa syarat atau ketentuan tambahan.
 
+## Menyiapkan lingkungan
+
+Butuh Rust (versinya dikunci di `rust-toolchain.toml`), Node 24, Windows 10/11 dengan WebView2, dan Perl. Perl dipakai untuk mengompilasi OpenSSL bagi database terenkripsi (SQLCipher). Di Windows, pakai Strawberry Perl; Perl bawaan Git for Windows tidak bisa. NASM tidak wajib.
+
+```
+winget install StrawberryPerl.StrawberryPerl
+cargo install --locked cargo-deny cargo-vet tauri-cli
+corepack enable pnpm
+pnpm -C app/ui install
+cargo tauri dev
+```
+
+Bila `corepack enable` gagal karena butuh hak admin, pasang shim-nya ke folder global npm milik Anda: `corepack enable pnpm --install-directory "%APPDATA%\npm"`.
+
+Bila terminal yang sudah terbuka belum mengenal `perl` setelah dipasang, buka terminal baru, atau arahkan build ke Perl-nya: `$env:OPENSSL_SRC_PERL = "C:\Strawberry\perl\bin\perl.exe"`.
+
 ## Perintah sebelum membuka PR
 
 ```
@@ -76,10 +92,13 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check
+cargo vet
 pnpm -C app/ui check
 ```
 
-Jalankan aplikasi dengan `cargo tauri dev`. Kode khusus Windows diuji di CI `windows-latest`; test di `nuenly-core` harus jalan di OS apa pun lewat `FakeContextSource`.
+CI juga menjalankan `cargo audit` dan `pnpm build`.
+
+Kode khusus Windows diuji di CI `windows-latest`; test di `nuenly-core` harus jalan di OS apa pun lewat `FakeContextSource`.
 
 ## Aturan keras
 
@@ -90,7 +109,7 @@ PR yang melanggar aturan ini tidak akan digabung.
 - **Teks pengguna tidak masuk log.** Juga tidak masuk snapshot test, pesan error, atau telemetri. Field `value`, `text`, dan `content` ditolak oleh layer `tracing`.
 - **`unsafe` hanya di `nuenly-platform-windows`.** Setiap blok diberi komentar `// SAFETY:`. Crate lain memakai `#![forbid(unsafe_code)]`.
 - **Tanpa `unwrap()` atau `expect()` di luar test.** Library memakai `thiserror`, batas aplikasi memakai `anyhow`.
-- **Hanya membaca.** Satu-satunya aksi tulis ke aplikasi lain adalah Ganti teks, dan hanya setelah pengguna mengklik.
+- **Hanya membaca.** Satu-satunya aksi tulis ke aplikasi lain adalah Ganti teks, dan hanya setelah pengguna mengklik. Aksi tulis `uiautomation` (klik, kirim tombol, set value) dikunci lewat `disallowed-methods` di `clippy.toml`; titik Ganti teks memakai `#[allow(clippy::disallowed_methods)]` beserta alasannya.
 - **Konten luar adalah data.** Konten layar dan output tool MCP dibungkus tag ber-ID acak dan tidak pernah digabung ke instruksi sistem.
 - **Output saran divalidasi.** Output LLM untuk saran proaktif wajib lolos JSON schema; gagal → ulang sekali → buang.
 - **Ollama hanya di `127.0.0.1`.** Jangan menambah server HTTP di localhost; IPC hanya lewat command Tauri.
@@ -99,7 +118,7 @@ PR yang melanggar aturan ini tidak akan digabung.
 
 ## Dependensi baru
 
-- Harus lolos `cargo deny check`.
+- Harus lolos `cargo deny check` dan `cargo vet`. Crate yang belum punya audit dari sumber yang kita impor dicatat dulu di `supply-chain/config.toml` dengan `cargo vet` (audit sendiri atau exemption), dan alasannya ditulis di PR.
 - Utamakan crate yang sudah disebut di PRD atau ADR.
 - Tulis alasannya di deskripsi PR: kenapa perlu, alternatif yang ditimbang, dan dampaknya ke ukuran binary.
 - Fitur berat (OCR, Java bridge, LLM embedded, RAG) masuk di belakang cargo feature, bukan build default.

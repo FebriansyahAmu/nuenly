@@ -1,0 +1,266 @@
+import { describe, expect, it } from 'vitest';
+
+import type { OllamaInfo, OllamaStatus } from '$lib/ollama';
+import type { StatusView } from '$lib/status';
+
+import type { AuditItem, SettingsBackend, SettingsView } from './backend';
+import { formatMemory, modelOptions, modelState, SettingsState } from './settings.svelte';
+
+const SETTINGS: SettingsView = {
+  model: null,
+  hotkey: 'Ctrl+Space',
+  hotkeyStatus: 'active',
+  ollamaAddress: '127.0.0.1:11434',
+  blockedApps: ['nuenly.exe'],
+  suggest: { enabled: true, perHour: 6, limits: [1, 3, 6] },
+};
+const STATUS: StatusView = {
+  modes: [{ id: 'all', label: 'Umum', accent: '#4f46e5', suggests: true }],
+  activeMode: 'all',
+  appName: null,
+  pausedUntilMs: null,
+};
+const info = (status: OllamaStatus, models: string[] = []): OllamaInfo => ({
+  status,
+  version: status === 'running' ? '0.12.6' : null,
+  models,
+  plan: null,
+  hardware: { ramBytes: 0, vramBytes: 0, gpu: null },
+});
+const running = (models: string[]) => info('running', models);
+const ACTIVITY: AuditItem[] = [
+  {
+    kind: 'ask',
+    atMs: 1_793_840_000_000,
+    app: 'notepad.exe',
+    mode: 'all',
+    model: 'gemma3:4b',
+    contextChars: 42,
+    outcome: 'answered',
+  },
+];
+
+function backend(overrides: Partial<SettingsBackend> = {}): SettingsBackend {
+  return {
+    setModel: (model) => Promise.resolve({ ...SETTINGS, model }),
+    setHotkey: (shortcut) => Promise.resolve({ ...SETTINGS, hotkey: shortcut ?? 'Ctrl+Space' }),
+    setSuggest: (enabled, perHour) => Promise.resolve({ ...SETTINGS, suggest: { ...SETTINGS.suggest, enabled, perHour } }),
+    checkOllama: () => Promise.resolve(running(['gpt-oss:20b'])),
+    openDownload: () => Promise.resolve(),
+    setMode: (id) => Promise.resolve({ ...STATUS, activeMode: id }),
+    pause: () => Promise.resolve({ ...STATUS, pausedUntilMs: 1 }),
+    resume: () => Promise.resolve(STATUS),
+    listActivity: () => Promise.resolve(ACTIVITY),
+    clearActivity: () => Promise.resolve(),
+    ...overrides,
+  };
+}
+
+describe('modelState', () => {
+  it('siap bila model pilihan atau pilihan otomatis tersedia', () => {
+    expect(modelState(running(['gpt-oss:20b']), 'gpt-oss:20b')).toBe('ready');
+    expect(modelState(running(['gpt-oss:20b']), null)).toBe('ready');
+  });
+
+  it('menjelaskan kenapa model belum siap', () => {
+    expect(modelState(null, null)).toBe('checking');
+    expect(modelState(info('missing'), null)).toBe('not-installed');
+    expect(modelState(info('installed'), null)).toBe('not-running');
+    expect(modelState(info('exposed'), null)).toBe('exposed');
+    expect(modelState(running([]), null)).toBe('no-models');
+    expect(modelState(running(['gemma3:4b']), 'gpt-oss:20b')).toBe('model-missing');
+  });
+});
+
+describe('modelOptions', () => {
+  it('tetap menampilkan pilihan tersimpan yang tidak ada di Ollama', () => {
+    expect(modelOptions(running(['gemma3:4b']), 'gpt-oss:20b')).toEqual(['gpt-oss:20b', 'gemma3:4b']);
+    expect(modelOptions(null, null)).toEqual([]);
+  });
+});
+
+describe('formatMemory', () => {
+  it('menulis ukuran dalam GB dengan koma desimal', () => {
+    expect(formatMemory(8_283_000_000)).toBe('7,7 GB');
+    expect(formatMemory(6 * 1024 ** 3)).toBe('6 GB');
+  });
+});
+
+describe('SettingsState', () => {
+  it('menyimpan pilihan model lalu menghitung ulang rencananya', async () => {
+    let checks = 0;
+    const state = new SettingsState(
+      backend({
+        checkOllama: () => {
+          checks += 1;
+          return Promise.resolve(running(['gpt-oss:20b']));
+        },
+      }),
+      SETTINGS,
+      STATUS,
+    );
+
+    await state.chooseModel('gpt-oss:20b');
+
+    expect(state.settings.model).toBe('gpt-oss:20b');
+    expect(state.error).toBeNull();
+    expect(checks).toBe(1);
+  });
+
+  it('tidak membocorkan pesan error teknis', async () => {
+    const state = new SettingsState(
+      backend({ setModel: () => Promise.reject(new Error('os error 5: C:\\Users\\x\\config.json')) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    await state.chooseModel('gpt-oss:20b');
+
+    expect(state.settings.model).toBeNull();
+    expect(state.error).toBe('Pilihan model tidak bisa disimpan. Coba lagi.');
+  });
+
+  it('mengganti pintasan dan kembali ke bawaan', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+
+    await state.setHotkey('Alt+Space');
+    expect(state.settings.hotkey).toBe('Alt+Space');
+    expect(state.hotkeyError).toBeNull();
+
+    await state.setHotkey(null);
+    expect(state.settings.hotkey).toBe('Ctrl+Space');
+  });
+
+  it('menjelaskan pintasan yang ditolak tanpa detail teknis', async () => {
+    const failing = (error: unknown) =>
+      new SettingsState(backend({ setHotkey: () => Promise.reject(error) }), SETTINGS, STATUS);
+
+    const taken = failing('taken');
+    await taken.setHotkey('Alt+Space');
+    expect(taken.settings.hotkey).toBe('Ctrl+Space');
+    expect(taken.hotkeyError).toBe('Kombinasi ini sudah dipakai aplikasi lain. Pintasan lama tetap dipakai.');
+
+    const unknown = failing('Command settings_set_hotkey not allowed');
+    await unknown.setHotkey('Alt+Space');
+    expect(unknown.hotkeyError).toBe('Perubahan tidak bisa disimpan. Coba lagi.');
+  });
+
+  it('mematikan saran dan mengganti batasnya', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+
+    await state.setSuggest(true, 3);
+    expect(state.settings.suggest).toMatchObject({ enabled: true, perHour: 3 });
+
+    await state.setSuggest(false, 3);
+    expect(state.settings.suggest.enabled).toBe(false);
+    expect(state.error).toBeNull();
+  });
+
+  it('setelan saran tetap bila gagal disimpan', async () => {
+    const state = new SettingsState(
+      backend({ setSuggest: () => Promise.reject(new Error('database is locked')) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    await state.setSuggest(false, 6);
+
+    expect(state.settings.suggest.enabled).toBe(true);
+    expect(state.error).toBe('Setelan saran tidak bisa disimpan. Coba lagi.');
+  });
+
+  it('menjeda lalu melanjutkan', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+
+    await state.togglePause();
+    expect(state.status.pausedUntilMs).toBe(1);
+
+    await state.togglePause();
+    expect(state.status.pausedUntilMs).toBeNull();
+  });
+
+  it('menganggap Ollama tidak ada bila pemeriksaan gagal', async () => {
+    const state = new SettingsState(backend({ checkOllama: () => Promise.reject(new Error('x')) }), SETTINGS, STATUS);
+
+    await state.checkOllama();
+
+    expect(state.modelState).toBe('not-installed');
+    expect(state.checking).toBe(false);
+  });
+
+  it('memuat riwayat lalu menghapusnya', async () => {
+    const state = new SettingsState(backend(), SETTINGS, STATUS);
+    expect(state.activity).toBeNull();
+
+    await state.loadActivity();
+    expect(state.activity).toEqual(ACTIVITY);
+    expect(state.activityFailed).toBe(false);
+
+    await state.clearActivity();
+    expect(state.activity).toEqual([]);
+    expect(state.error).toBeNull();
+  });
+
+  it('menandai riwayat yang tidak terbaca tanpa membuang yang sudah tampil', async () => {
+    let fail = false;
+    const state = new SettingsState(
+      backend({ listActivity: () => (fail ? Promise.reject(new Error('SQLite: disk I/O')) : Promise.resolve(ACTIVITY)) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    await state.loadActivity();
+    fail = true;
+    await state.loadActivity();
+
+    expect(state.activityFailed).toBe(true);
+    expect(state.activity).toEqual(ACTIVITY);
+  });
+
+  it('riwayat tetap ada bila gagal dihapus', async () => {
+    const state = new SettingsState(
+      backend({ clearActivity: () => Promise.reject(new Error('riwayat tidak bisa dihapus')) }),
+      SETTINGS,
+      STATUS,
+    );
+    await state.loadActivity();
+
+    await state.clearActivity();
+
+    expect(state.activity).toEqual(ACTIVITY);
+    expect(state.error).toBe('Riwayat tidak bisa dihapus. Coba lagi.');
+  });
+
+  it('riwayat yang dimuat sebelum dihapus tidak muncul lagi', async () => {
+    let finish: (items: AuditItem[]) => void = () => {};
+    const state = new SettingsState(
+      backend({ listActivity: () => new Promise((resolve) => (finish = resolve)) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    const loading = state.loadActivity();
+    await state.clearActivity();
+    finish(ACTIVITY);
+    await loading;
+
+    expect(state.activity).toEqual([]);
+  });
+
+  it('mengabaikan hasil pemeriksaan lama', async () => {
+    const pending: ((info: OllamaInfo) => void)[] = [];
+    const state = new SettingsState(
+      backend({ checkOllama: () => new Promise((resolve) => pending.push(resolve)) }),
+      SETTINGS,
+      STATUS,
+    );
+
+    const first = state.checkOllama();
+    const second = state.checkOllama();
+    pending[1]?.(running(['gpt-oss:20b']));
+    pending[0]?.(info('missing'));
+    await Promise.all([first, second]);
+
+    expect(state.modelState).toBe('ready');
+  });
+});

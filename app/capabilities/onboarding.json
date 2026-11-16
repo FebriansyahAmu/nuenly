@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "onboarding",
+  "description": "Onboarding: menyimpan persetujuan privasi, memeriksa Ollama, membuka halaman unduhannya, lalu selesai.",
+  "windows": ["onboarding"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-status-get",
+    "allow-onboarding-accept",
+    "allow-onboarding-finish",
+    "allow-ollama-status",
+    "allow-ollama-open-download"
+  ]
+}

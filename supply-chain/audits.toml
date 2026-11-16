@@ -1,0 +1,235 @@
+
+# cargo-vet audits file
+
+[audits]
+
+[[trusted.anyhow]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-10-05"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.autocfg]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-22"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.equivalent]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2023-02-05"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.errno]]
+criteria = "safe-to-deploy"
+user-id = 6825 # Dan Gohman (sunfishcode)
+start = "2023-08-29"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor. Dipakai process-wrap untuk rmcp (ADR 0019)."
+
+[[trusted.lazy_static]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2026-10-01"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2020-01-10"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-bigint]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-09-04"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-complex]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-06-10"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-integer]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-20"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.num-iter]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-20"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.openssl-src]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-02-25"
+end = "2027-10-29"
+notes = "Sumber OpenSSL untuk SQLCipher (ADR 0013); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.proc-macro2]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-04-23"
+end = "2027-10-29"
+notes = "Penerbit crate dasar ekosistem Rust (syn, serde, thiserror, anyhow); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.rustversion]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-07-08"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.syn]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-03-01"
+end = "2027-10-29"
+notes = "Penerbit crate dasar ekosistem Rust (syn, serde, thiserror, anyhow); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.thiserror]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-10-09"
+end = "2027-10-29"
+notes = "Penerbit crate dasar ekosistem Rust (syn, serde, thiserror, anyhow); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.thiserror-impl]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-10-09"
+end = "2027-10-29"
+notes = "Penerbit crate dasar ekosistem Rust (syn, serde, thiserror, anyhow); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.thread_local]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-09-07"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.tokio-macros]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2020-10-26"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; dipercaya Mozilla dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.tokio-stream]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2021-01-04"
+end = "2027-10-29"
+notes = "Penerbit tepercaya (tokio); dipakai rmcp (ADR 0019)."
+
+[[trusted.unicode-ident]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2021-10-02"
+end = "2027-10-29"
+notes = "Penerbit crate dasar ekosistem Rust (syn, serde, thiserror, anyhow); juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-collections]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2025-02-06"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-core]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-11-15"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-future]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2025-02-10"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-interface]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-02-18"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-link]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-07-17"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-numerics]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2023-05-15"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-result]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-02-02"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-strings]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-02-02"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-targets]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-09-09"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-threading]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2025-04-29"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows-version]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2023-03-07"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows_aarch64_gnullvm]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-09-01"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."
+
+[[trusted.windows_x86_64_gnullvm]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-09-01"
+end = "2027-10-29"
+notes = "Penerbit tepercaya; juga dipercaya ISRG, Mozilla, dan Bytecode Alliance yang auditnya kita impor."

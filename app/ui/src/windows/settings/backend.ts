@@ -1,0 +1,116 @@
+import { invoke } from '@tauri-apps/api/core';
+
+import type { OllamaInfo } from '$lib/ollama';
+import type { StatusView } from '$lib/status';
+
+/** Sama dengan `HotkeyStatus` di `app/src/hotkey.rs`. */
+export type HotkeyStatus = 'active' | 'taken' | 'failed';
+
+/** Sama dengan `HotkeyFailure` di `app/src/settings.rs`. */
+export type HotkeyFailure = 'invalid' | 'taken' | 'failed' | 'notSaved';
+
+/** Bentuknya sama dengan `SettingsView` di `app/src/settings.rs`. */
+export interface SettingsView {
+  /** Model pilihan pengguna; `null` berarti dipilih otomatis sesuai kemampuan PC. */
+  model: string | null;
+  /** Pintasan Tanya Nuenly yang sedang dipakai, misalnya `Ctrl+Space`. */
+  hotkey: string;
+  hotkeyStatus: HotkeyStatus;
+  ollamaAddress: string;
+  /** Aplikasi yang tidak pernah dibaca, apa pun modenya. */
+  blockedApps: string[];
+  suggest: SuggestView;
+}
+
+/** Saran saat mengetik; sama dengan `SuggestView` di `app/src/settings.rs`. */
+export interface SuggestView {
+  enabled: boolean;
+  /** Saran paling banyak per jam. */
+  perHour: number;
+  /** Pilihan batas per jam. */
+  limits: number[];
+}
+
+/** Sama dengan `AskOutcome` di `crates/nuenly-store/src/audit.rs`. */
+export type AskOutcome = 'answered' | 'stopped' | 'failed';
+
+/** Sama dengan `SuggestOutcome` di `crates/nuenly-store/src/audit.rs`. */
+export type SuggestOutcome = 'shown' | 'held' | 'nothing' | 'dropped' | 'failed';
+
+/** Sama dengan `Reaction` di `crates/nuenly-store/src/audit.rs`. */
+export type Reaction = 'copied' | 'viewed' | 'disliked' | 'dismissed' | 'closed' | 'expired';
+
+/** Sama dengan `ReplaceSource` di `crates/nuenly-store/src/audit.rs`. */
+export type ReplaceSource = 'selection' | 'field';
+
+/** Sama dengan `ReplaceOutcome` di `crates/nuenly-store/src/audit.rs`. */
+export type ReplaceOutcome = 'replaced' | 'changed' | 'failed';
+
+/** Isi kejadian; sama dengan `AuditEvent` di `crates/nuenly-store/src/audit.rs`. */
+export type AuditEvent =
+  | {
+      kind: 'ask';
+      model: string;
+      /** Jumlah karakter teks dari layar yang ikut dikirim; 0 berarti hanya perintah. */
+      contextChars: number;
+      outcome: AskOutcome;
+    }
+  | {
+      /** Pemeriksaan saran proaktif. */
+      kind: 'suggest';
+      model: string;
+      contextChars: number;
+      outcome: SuggestOutcome;
+    }
+  | {
+      /** Tanggapan pengguna atas saran yang tampil. */
+      kind: 'reaction';
+      reaction: Reaction;
+      /** Milidetik sejak saran tampil. */
+      afterMs: number;
+    }
+  | {
+      /** Ganti teks: jawaban Tanya Nuenly ditempel ke aplikasi asal. */
+      kind: 'replace';
+      source: ReplaceSource;
+      outcome: ReplaceOutcome;
+    };
+
+/** Satu catatan riwayat aktivitas; sama dengan `AuditItem` di `app/src/audit.rs`. */
+export type AuditItem = AuditEvent & {
+  /** Milidetik sejak epoch Unix. */
+  atMs: number;
+  /** Nama executable aplikasi yang dibantu. */
+  app: string | null;
+  /** ID mode. */
+  mode: string;
+};
+
+/** Aksi jendela Pengaturan ke Rust; dipisah agar mode demo di browser bisa menggantinya. */
+export interface SettingsBackend {
+  setModel(model: string | null): Promise<SettingsView>;
+  /** `null` kembali ke Ctrl+Space. Gagal dengan kode `HotkeyFailure`. */
+  setHotkey(shortcut: string | null): Promise<SettingsView>;
+  setSuggest(enabled: boolean, perHour: number): Promise<SettingsView>;
+  checkOllama(): Promise<OllamaInfo>;
+  openDownload(): Promise<void>;
+  setMode(id: string): Promise<StatusView>;
+  pause(): Promise<StatusView>;
+  resume(): Promise<StatusView>;
+  /** Catatan audit terbaru, yang terbaru lebih dulu. */
+  listActivity(): Promise<AuditItem[]>;
+  clearActivity(): Promise<void>;
+}
+
+export const tauriBackend: SettingsBackend = {
+  setModel: (model) => invoke('settings_set_model', { model }),
+  setHotkey: (shortcut) => invoke('settings_set_hotkey', { shortcut }),
+  setSuggest: (enabled, perHour) => invoke('settings_set_suggest', { enabled, perHour }),
+  checkOllama: () => invoke('ollama_status'),
+  openDownload: () => invoke('ollama_open_download'),
+  setMode: (id) => invoke('status_set_mode', { id }),
+  pause: () => invoke('status_pause'),
+  resume: () => invoke('status_resume'),
+  listActivity: () => invoke('audit_list'),
+  clearActivity: () => invoke('audit_clear'),
+};

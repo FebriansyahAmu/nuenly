@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Sumber ikon sementara; generate ulang dengan `cargo tauri icon app/icons/source.svg`. -->
+  <circle cx="480" cy="544" r="440" fill="#09090b"/>
+  <path d="M310 790 V420 M310 540 C310 430 390 370 485 370 C580 370 655 430 655 540 V790"
+        fill="none" stroke="#ffffff" stroke-width="130" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="850" cy="174" r="130" fill="#4f46e5" stroke="#ffffff" stroke-width="40"/>
+</svg>

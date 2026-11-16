@@ -1,0 +1,38 @@
+[package]
+name = "nuenly"
+description = "Asisten AI desktop yang membaca konteks aplikasi aktif, dengan model lokal."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+nuenly-context.workspace = true
+nuenly-core.workspace = true
+nuenly-llm.workspace = true
+nuenly-modes.workspace = true
+nuenly-store.workspace = true
+nuenly-trigger.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { workspace = true, features = ["tray-icon"] }
+# Runtime Tauri sudah tokio; dipakai untuk menghentikan jawaban yang sedang berjalan dan untuk
+# satu timer pemicu saran (`time`).
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+nuenly-platform-windows.workspace = true
+
+[dev-dependencies]
+nuenly-core = { workspace = true, features = ["fake"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,75 @@
+[workspace]
+resolver = "3"
+members = ["app", "crates/*", "tools/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+nuenly-context = { path = "crates/nuenly-context" }
+nuenly-core = { path = "crates/nuenly-core" }
+nuenly-llm = { path = "crates/nuenly-llm" }
+nuenly-mcp = { path = "crates/nuenly-mcp" }
+nuenly-modes = { path = "crates/nuenly-modes" }
+nuenly-platform-windows = { path = "crates/nuenly-platform-windows" }
+nuenly-redact = { path = "crates/nuenly-redact" }
+nuenly-store = { path = "crates/nuenly-store" }
+nuenly-trigger = { path = "crates/nuenly-trigger" }
+
+anyhow = "1.0.104"
+bytes = "1.12.1"
+getrandom = "0.3.4"
+# Tanpa resolusi $ref lewat HTTP atau file: schema mode pack harus mandiri (ADR 0005).
+jsonschema = { version = "0.60.2", default-features = false }
+# Hanya HTTP/1 tanpa TLS dan proxy sistem; TLS menyusul bersama adapter jarak jauh (ADR 0005).
+reqwest = { version = "0.13.5", default-features = false }
+# Pola PII guard (ADR 0018). Versi yang sama sudah dipakai jsonschema.
+regex = "1.13.1"
+# MCP client resmi (ADR 0019). Hanya klien dan proses anak (stdio); tanpa server, makro, OAuth,
+# atau HTTP sampai Streamable HTTP menyusul bersama TLS.
+rmcp = { version = "3.9.0", default-features = false, features = ["client", "transport-child-process"] }
+process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "job-object", "creation-flags", "kill-on-drop"] }
+# Sidik ToolPin yang stabil antar-jalan. Versi yang sama sudah dipakai rmcp.
+sha2 = "0.11.1"
+# SQLCipher dengan OpenSSL yang ikut dikompilasi, jadi tidak ada DLL OpenSSL yang dimuat dari
+# sistem (ADR 0013). Build butuh Perl; di Windows: Strawberry Perl. Minimal 0.42 agar
+# sqlcipher-src ≥ 420 (SQLite 3.54.1, RUSTSEC-2026-0502).
+rusqlite = { version = "0.43.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tauri = "2.12.5"
+tauri-build = "2.7.4"
+thiserror = "2.0.21"
+tokio = "1.54.1"
+# Hanya membaca: tanpa penulis TOML (`display`). Versi yang sama sudah dipakai build Tauri.
+toml = { version = "1.1.8", default-features = false, features = ["parse", "serde", "std"] }
+# Log diagnostik tanpa teks pengguna (ADR 0010). Tanpa makro atribut, warna ANSI, dan filter regex.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt"] }
+# `input` wajib karena uiautomation 0.25.1 tidak terkompilasi tanpanya. Aksi tulisnya
+# (klik, kirim tombol, set value) dikunci lewat disallowed-methods di clippy.toml.
+# `event`: handler fokus, perubahan nilai, dan perubahan teks (ADR 0012); tanpa dependensi baru.
+uiautomation = { version = "0.25.1", default-features = false, features = ["event", "input", "pattern"] }
+windows = "0.62.2"
+zeroize = "1.9.1"
+
+# `unsafe_code` sengaja tidak diset di sini: crate platform butuh `unsafe`, dan cargo
+# tidak mengizinkan satu crate menimpa sebagian lint workspace. Crate selain
+# nuenly-platform-windows memasang `#![forbid(unsafe_code)]` di lib.rs.
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unsafe_op_in_unsafe_fn = "deny"
+# OpenSSL yang ikut dikompilasi untuk SQLCipher merujuk PDB yang tidak ikut terpasang, jadi
+# linker MSVC mencetak ratusan LNK4099 untuk setiap binary yang memakai store.
+linker_messages = "allow"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+undocumented_unsafe_blocks = "deny"
+dbg_macro = "deny"
